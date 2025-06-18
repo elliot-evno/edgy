@@ -173,10 +173,24 @@ ipcMain.handle('chat-gemini', async (
       return 'Error: Gemini API not initialized. Please check your API key in .env file.';
     }
     
-    const parts: any[] = [{ text: `User: ${message}` }];
+    // Technical interview assistant system prompt
+    const systemPrompt = `You are a concise technical interview assistant. You can see the screen and hear audio. Provide direct, short answers. Never say "the user wants" or similar phrases. Help with:
+
+- Coding problems & algorithms
+- System design questions  
+- Debugging code
+- Technical concepts
+- Interview prep
+
+Be brief and actionable.`;
+    
+    const parts: any[] = [
+      { text: systemPrompt },
+      { text: `Question: ${message}` }
+    ];
     
     if (screenText) {
-      parts.push({ text: `Current screen content: ${screenText}` });
+      parts.push({ text: `Screen content: ${screenText}` });
     }
     
     // Add memory context
@@ -324,19 +338,18 @@ async function addToMemory(content: string): Promise<void> {
     // Use AI to update memory based on old memory + new content + audio context
     const audioContext = currentAudioTranscript ? `\n\nRecent audio: "${currentAudioTranscript}"` : '';
     
-    const prompt = `You are maintaining a memory of what's happening on the user's screen and what they're saying. 
+    const prompt = `Update technical session memory. Focus on code, problems, and key context.
 
-Current memory: "${currentMemory || 'No previous memory'}"
+Current: "${currentMemory || 'Empty'}"
+Screen: "${content}"${audioContext}
 
-New screen content: "${content}"${audioContext}
+Keep concise. Focus on:
+- Code/algorithms being worked on
+- Technical problems/solutions
+- Important changes
+- Interview context
 
-Please update the memory to incorporate the new information. Keep it concise but comprehensive. Focus on:
-- Important changes or new information from screen and audio
-- Current state and context
-- Remove outdated information
-- Maintain continuity between visual and audio information
-
-Respond with just the updated memory content (no explanations):`;
+Updated memory:`;
 
     const result = await geminiModel.generateContent(prompt);
     const updatedMemory = result.response.text().trim();
@@ -363,7 +376,7 @@ Respond with just the updated memory content (no explanations):`;
 
 function getMemoryContext(): string {
   if (!currentMemory) return '';
-  return `\n\nCurrent screen memory:\n${currentMemory}`;
+  return `\n\nContext: ${currentMemory}`;
 }
 
 // Audio transcription functions
@@ -425,7 +438,7 @@ async function addAudioToMemory(audioText: string): Promise<void> {
 
 function getAudioContext(): string {
   if (!currentAudioTranscript) return '';
-  return `\n\nRecent audio transcript:\n${currentAudioTranscript}`;
+  return `\n\nAudio: ${currentAudioTranscript}`;
 }
 
 // Audio transcription IPC handlers
