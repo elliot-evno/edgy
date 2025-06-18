@@ -7,7 +7,7 @@ export default defineConfig({
   base: './',
   root: '.',
   build: {
-    outDir: 'dist-react',
+    outDir: 'dist/renderer',
     emptyOutDir: true,
   },
   server: {
