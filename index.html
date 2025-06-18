@@ -196,6 +196,8 @@
         let mediaRecorder = null;
         let recordedChunks = [];
         let recordedVideoBlob = null;
+        let isRecording = false;
+        const RECORDING_DURATION = 10000; // 10 seconds in milliseconds
 
         captureBtn.addEventListener('click', async () => {
             if (!mediaStream) {
@@ -220,46 +222,33 @@
                     console.log('Has getTracks:', !!mediaStream.getTracks);
                     screenVideo.srcObject = mediaStream;
                     
-                    // Initialize MediaRecorder for recording
+                    // Initialize MediaRecorder for continuous recording
                     mediaRecorder = new MediaRecorder(mediaStream, {
                         mimeType: 'video/webm;codecs=vp9'
                     });
                     
                     mediaRecorder.ondataavailable = (event) => {
                         if (event.data.size > 0) {
-                            recordedChunks.push(event.data);
+                            recordedChunks.push({
+                                data: event.data,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Keep only last 10 seconds of chunks
+                            const cutoffTime = Date.now() - RECORDING_DURATION;
+                            recordedChunks = recordedChunks.filter(chunk => chunk.timestamp > cutoffTime);
                         }
                     };
                     
-                    mediaRecorder.onstop = () => {
-                        recordedVideoBlob = new Blob(recordedChunks, {
-                            type: 'video/webm'
-                        });
-                        recordedChunks = [];
-                        
-                        // Show recorded video for playback
-                        screenVideo.srcObject = null;
-                        screenVideo.src = URL.createObjectURL(recordedVideoBlob);
-                        screenVideo.controls = true;
-                        screenVideo.loop = true;
-                        
-                        // Convert to base64 and send to Gemini
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            currentImageDataURL = reader.result;
-                            addMessage('Screen recording completed! You can now ask questions about the recorded content.', 'ai');
-                        };
-                        reader.readAsDataURL(recordedVideoBlob);
-                    };
-                    
-                    // Start recording
-                    mediaRecorder.start();
+                    // Start continuous recording with small intervals
+                    mediaRecorder.start(1000); // Record in 1-second chunks
+                    isRecording = true;
                     captureBtn.textContent = '🛑 Stop Recording';
                 } catch (err) {
                     console.error('Error capturing screen:', err);
                 }
             } else {
-                // Stop recording
+                // Stop all recording
                 if (mediaRecorder && mediaRecorder.state === 'recording') {
                     mediaRecorder.stop();
                 }
@@ -270,7 +259,18 @@
                 }
                 mediaStream = null;
                 mediaRecorder = null;
+                isRecording = false;
+                recordedChunks = [];
                 captureBtn.textContent = '🎥 Start Screen Recording';
+                
+                // Clear preview
+                screenVideo.srcObject = null;
+                screenVideo.src = '';
+                screenVideo.controls = false;
+                const existingPreview = screenPreview.querySelector('video[controls]');
+                if (existingPreview) {
+                    existingPreview.remove();
+                }
             }
         });
         
@@ -286,12 +286,33 @@
             sendBtn.classList.add('loading');
             sendBtn.textContent = 'Thinking...';
             
+            // Capture last 10 seconds if recording
+            let videoDataURL = currentImageDataURL;
+            if (isRecording && recordedChunks.length > 0) {
+                try {
+                    const videoBlob = new Blob(recordedChunks.map(chunk => chunk.data), {
+                        type: 'video/webm'
+                    });
+                    
+                    // Convert to base64 for Gemini
+                    const reader = new FileReader();
+                    videoDataURL = await new Promise((resolve) => {
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(videoBlob);
+                    });
+                    
+                    addMessage('📹 Analyzing last 10 seconds of screen recording...', 'ai');
+                } catch (err) {
+                    console.error('Error capturing last 10 seconds for Gemini:', err);
+                }
+            }
+            
             try {
                 const { ipcRenderer } = require('electron');
                 const response = await ipcRenderer.invoke('chat-gemini', {
                     message,
                     screenText: currentScreenText,
-                    imageDataURL: currentImageDataURL
+                    imageDataURL: videoDataURL
                 });
                 addMessage(response, 'ai');
             } catch (error) {
