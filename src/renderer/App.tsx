@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useAudioRecording } from './hooks/useAudioRecording';
 import './App.css';
 
 interface Message {
@@ -15,6 +16,12 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Audio recording hook
+  const { 
+    startContinuousRecording, 
+    error: audioError 
+  } = useAudioRecording();
 
   useEffect(() => {
     initializeApp();
@@ -29,26 +36,22 @@ const App: React.FC = () => {
 
   const initializeApp = async () => {
     try {
-      const debugMode = await (window as any).electronAPI.getDebugMode();
+      console.log('Starting continuous audio recording...');
+      await startContinuousRecording();
+      console.log('Audio recording started successfully');
       
-      if (debugMode) {
-        addMessage('🔧 Debug mode enabled - showing advanced controls.', 'system');
-      }
     } catch (error) {
       console.error('Error initializing app:', error);
-      addMessage('❌ Error initializing assistant', 'system');
+      console.error('Failed to start audio recording:', error);
     }
   };
 
-  const addMessage = useCallback((text: string, type: 'user' | 'ai' | 'system') => {
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      role: type === 'user' ? 'user' : 'assistant',
-      content: text
-    };
-    setMessages(prev => [...prev, newMessage]);
-  }, []);
-
+  // Log audio errors
+  useEffect(() => {
+    if (audioError) {
+      console.error('Audio Error:', audioError);
+    }
+  }, [audioError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

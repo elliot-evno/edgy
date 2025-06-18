@@ -22,7 +22,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, addMessage, assistantSt
 
   const sendMessage = async () => {
     if (!assistantStarted) {
-      addMessage('❌ Please start the assistant first!', 'system');
       return;
     }
     

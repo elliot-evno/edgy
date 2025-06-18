@@ -4,11 +4,15 @@ import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@goo
 import * as Tesseract from 'tesseract.js';
 import { setInterval, clearInterval } from 'timers';
 import * as path from 'path';
+import OpenAI from 'openai';
+import * as fs from 'fs';
+import * as os from 'os';
 
 dotenv.config();
 
 let mainWindow: BrowserWindow | null = null;
 let geminiModel: GenerativeModel | null = null;
+let openaiClient: OpenAI | null = null;
 let streamingInterval: NodeJS.Timeout | null = null;
 let memoryInterval: NodeJS.Timeout | null = null;
 
@@ -23,11 +27,17 @@ interface MemoryEntry {
 }
 
 let currentMemory: string = '';
+let currentAudioTranscript: string = '';
 const MEMORY_CAPTURE_INTERVAL = 5000; // 5 seconds
 
 function logMemory(message: string, data?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[MEMORY ${timestamp}] ${message}`, data || '');
+}
+
+function logAudio(message: string, data?: any) {
+  const timestamp = new Date().toISOString();
+  console.log(`[AUDIO ${timestamp}] ${message}`, data || '');
 }
 
 function createWindow(): void {
@@ -94,6 +104,16 @@ function initializeAI(): void {
   if (geminiApiKey) {
     const genAI = new GoogleGenerativeAI(geminiApiKey);
     geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  }
+  
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  if (openaiApiKey) {
+    openaiClient = new OpenAI({
+      apiKey: openaiApiKey,
+    });
+    logAudio('OpenAI client initialized for audio transcription');
+  } else {
+    logAudio('Warning: OPENAI_API_KEY not found. Audio transcription will be disabled.');
   }
 }
 
@@ -163,6 +183,12 @@ ipcMain.handle('chat-gemini', async (
     const memoryContext = getMemoryContext();
     if (memoryContext) {
       parts.push({ text: memoryContext });
+    }
+    
+    // Add audio context
+    const audioContext = getAudioContext();
+    if (audioContext) {
+      parts.push({ text: audioContext });
     }
     
     if (imageDataURL) {
@@ -295,18 +321,20 @@ async function addToMemory(content: string): Promise<void> {
       return;
     }
 
-    // Use AI to update memory based on old memory + new content
-    const prompt = `You are maintaining a memory of what's happening on the user's screen. 
+    // Use AI to update memory based on old memory + new content + audio context
+    const audioContext = currentAudioTranscript ? `\n\nRecent audio: "${currentAudioTranscript}"` : '';
+    
+    const prompt = `You are maintaining a memory of what's happening on the user's screen and what they're saying. 
 
 Current memory: "${currentMemory || 'No previous memory'}"
 
-New screen content: "${content}"
+New screen content: "${content}"${audioContext}
 
 Please update the memory to incorporate the new information. Keep it concise but comprehensive. Focus on:
-- Important changes or new information
+- Important changes or new information from screen and audio
 - Current state and context
 - Remove outdated information
-- Maintain continuity
+- Maintain continuity between visual and audio information
 
 Respond with just the updated memory content (no explanations):`;
 
@@ -315,8 +343,9 @@ Respond with just the updated memory content (no explanations):`;
     
     currentMemory = updatedMemory;
     
-    logMemory('Memory updated by AI', { 
+    logMemory('Memory updated by AI (with audio context)', { 
       newContentPreview: content.substring(0, 50) + '...',
+      audioContextLength: currentAudioTranscript.length,
       updatedMemoryPreview: updatedMemory.substring(0, 100) + '...',
       memoryLength: currentMemory.length 
     });
@@ -337,7 +366,91 @@ function getMemoryContext(): string {
   return `\n\nCurrent screen memory:\n${currentMemory}`;
 }
 
-// Memory management IPC handlers (only available in debug mode)
+// Audio transcription functions
+async function transcribeAudioFile(audioBuffer: Buffer, mimeType: string = 'audio/wav'): Promise<string> {
+  if (!openaiClient) {
+    logAudio('OpenAI client not available for transcription');
+    return '';
+  }
+
+  try {
+    // Create a temporary file
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `temp_audio_${Date.now()}.wav`);
+    
+    // Write buffer to temporary file
+    fs.writeFileSync(tempFile, audioBuffer);
+    
+    logAudio('Transcribing audio file', { fileSize: audioBuffer.length });
+    
+    // Transcribe using OpenAI Whisper
+    const transcription = await openaiClient.audio.transcriptions.create({
+      file: fs.createReadStream(tempFile),
+      model: 'whisper-1',
+    });
+    
+    // Clean up temporary file
+    fs.unlinkSync(tempFile);
+    
+    logAudio('Audio transcription completed', { 
+      textLength: transcription.text.length,
+      preview: transcription.text.substring(0, 100) + '...'
+    });
+    
+    return transcription.text;
+    
+  } catch (error) {
+    logAudio('Error transcribing audio', error);
+    return '';
+  }
+}
+
+async function addAudioToMemory(audioText: string): Promise<void> {
+  if (!audioText.trim()) return;
+  
+  currentAudioTranscript = audioText;
+  logAudio('Audio transcript updated', {
+    textLength: audioText.length,
+    preview: audioText.substring(0, 100) + '...'
+  });
+  
+  // Notify frontend if in debug mode
+  if (mainWindow && isDebugMode) {
+    mainWindow.webContents.send('audio-transcript-updated', { 
+      timestamp: Date.now(), 
+      content: audioText 
+    });
+  }
+}
+
+function getAudioContext(): string {
+  if (!currentAudioTranscript) return '';
+  return `\n\nRecent audio transcript:\n${currentAudioTranscript}`;
+}
+
+// Audio transcription IPC handlers
+ipcMain.handle('transcribe-audio', async (_event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, mimeType?: string): Promise<string> => {
+  try {
+    const buffer = Buffer.from(audioBuffer);
+    const transcription = await transcribeAudioFile(buffer, mimeType || 'audio/wav');
+    
+    // Add to memory if transcription is successful
+    if (transcription) {
+      await addAudioToMemory(transcription);
+    }
+    
+    return transcription;
+  } catch (error) {
+    logAudio('Error in transcribe-audio IPC handler', error);
+    return '';
+  }
+});
+
+ipcMain.handle('get-audio-transcript', async () => {
+  return currentAudioTranscript;
+});
+
+// Memory management functions
 if (isDebugMode) {
   ipcMain.handle('start-memory-capture', async () => {
     startMemoryCapture();

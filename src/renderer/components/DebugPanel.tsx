@@ -49,10 +49,8 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ addMessage }) => {
         }
         
         setIsRecording(true);
-        addMessage('🎥 Screen recording started', 'system');
       } catch (err) {
         console.error('Error capturing screen:', err);
-        addMessage('❌ Failed to start recording', 'system');
       }
     } else {
       if (mediaStreamRef.current) {
@@ -65,7 +63,6 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ addMessage }) => {
       }
       
       setIsRecording(false);
-      addMessage('⏹️ Screen recording stopped', 'system');
     }
   };
 
@@ -73,10 +70,8 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ addMessage }) => {
     try {
       await (window as any).electronAPI.startMemoryCapture();
       setMemoryStatus('Active');
-      addMessage('🧠 Memory capture started manually', 'system');
     } catch (error) {
       console.error('Error starting memory capture:', error);
-      addMessage('❌ Failed to start memory capture', 'system');
     }
   };
 
@@ -84,7 +79,6 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ addMessage }) => {
     try {
       await (window as any).electronAPI.stopMemoryCapture();
       setMemoryStatus('Inactive');
-      addMessage('🛑 Memory capture stopped manually', 'system');
     } catch (error) {
       console.error('Error stopping memory capture:', error);
     }
@@ -93,7 +87,6 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ addMessage }) => {
   const clearMemory = async () => {
     try {
       await (window as any).electronAPI.clearMemory();
-      addMessage('🗑️ Memory cleared', 'system');
       await updateMemoryDisplay();
     } catch (error) {
       console.error('Error clearing memory:', error);

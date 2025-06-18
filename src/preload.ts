@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Chat
   chatGemini: (args: any) => ipcRenderer.invoke('chat-gemini', args),
   
+  // Audio transcription
+  transcribeAudio: (audioBuffer: ArrayBuffer, mimeType?: string) => ipcRenderer.invoke('transcribe-audio', audioBuffer, mimeType),
+  getAudioTranscript: () => ipcRenderer.invoke('get-audio-transcript'),
+  
   // Memory management (debug mode)
   startMemoryCapture: () => ipcRenderer.invoke('start-memory-capture'),
   stopMemoryCapture: () => ipcRenderer.invoke('stop-memory-capture'),
@@ -60,6 +64,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return stream;
     } catch (error) {
       console.error('Error in getScreenStream:', error);
+      throw error;
+    }
+  },
+  
+  // Get microphone stream for audio recording
+  getMicrophoneStream: async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
+      
+      console.log('Microphone stream created successfully:', stream);
+      return stream;
+    } catch (error) {
+      console.error('Error in getMicrophoneStream:', error);
       throw error;
     }
   }
