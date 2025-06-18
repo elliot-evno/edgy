@@ -4,6 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useAudioRecording } from './hooks/useAudioRecording';
 import './App.css';
+import { RefreshCw } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -66,6 +67,11 @@ const App: React.FC = () => {
     await (window as any).electronAPI.resizeWindow(newHeight);
   };
 
+  const clearHistory = () => {
+    setMessages([]);
+    setInput('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -108,13 +114,25 @@ const App: React.FC = () => {
   return (
     <div className="app-container">
       <div className="title-bar">
+      <div style={{ marginRight: 'auto' }}>
         <button 
-          className="toggle-button"
-          onClick={toggleChat}
-          title={isExpanded ? "Collapse" : "Expand"}
+            className="toggle-button"
+            onClick={toggleChat}
+            title={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? '▼' : '▲'}
+          </button>
+          </div>
+
+        <button 
+          className="clear-button"
+          onClick={clearHistory}
+          title="Clear chat history"
         >
-          {isExpanded ? '▼' : '▲'}
+          <RefreshCw size={16} />
         </button>
+
+     
       </div>
       <div className={`chat-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
         <div className="chat-container" ref={chatContainerRef}>

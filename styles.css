@@ -34,11 +34,39 @@ body {
     -webkit-app-region: drag;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 8px;
     padding: 0 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
+}
+
+.title-bar button {
+    -webkit-app-region: no-drag;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+    font-size: 14px;
+}
+
+.title-bar button:hover {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.clear-button {
+    font-size: 12px !important;
+    opacity: 0.6;
+}
+
+.clear-button:hover {
+    opacity: 1;
 }
 
 .toggle-button {
