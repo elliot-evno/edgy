@@ -26,7 +26,11 @@ function initializeApp(): void {
     ignoreMouseEvents
   });
   
-  screenManager = new ScreenManager();
+  // Create the main window first
+  windowManager.createWindow();
+  
+  // Initialize other managers
+  screenManager = new ScreenManager(windowManager);
   memoryManager = new MemoryManager(screenManager, isDebugMode);
   
   ipcManager = new IPCManager(
@@ -35,9 +39,6 @@ function initializeApp(): void {
     memoryManager,
     isDebugMode
   );
-
-  // Create the main window
-  windowManager.createWindow();
   
   // Register global shortcuts
   globalShortcut.register('CommandOrControl+G', () => {

@@ -1,11 +1,20 @@
 import { desktopCapturer } from 'electron';
 import * as Tesseract from 'tesseract.js';
+import { WindowManager } from './WindowManager';
 
 export class ScreenManager {
   private streamingInterval: NodeJS.Timeout | null = null;
+  private windowManager: WindowManager;
+
+  constructor(windowManager: WindowManager) {
+    this.windowManager = windowManager;
+  }
 
   async captureScreen(): Promise<{ dataURL: string } | null> {
     try {
+      // Hide the window before capturing
+      await this.windowManager.temporarilyHideForScreenshot();
+      
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
         thumbnailSize: { width: 1920, height: 1080 }

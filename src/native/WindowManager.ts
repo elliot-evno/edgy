@@ -174,4 +174,27 @@ export class WindowManager {
     // Notify renderer
     this.mainWindow.webContents.send('toggle-collapse');
   }
+
+  async temporarilyHideForScreenshot(): Promise<void> {
+    if (!this.mainWindow) return;
+    
+    // Store current opacity
+    const currentOpacity = this.mainWindow.getOpacity();
+    
+    // Hide window
+    this.mainWindow.setOpacity(0);
+    
+    // Wait a tiny bit for the UI to update
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    return new Promise((resolve) => {
+      // Restore opacity in next tick
+      setImmediate(() => {
+        if (this.mainWindow) {
+          this.mainWindow.setOpacity(currentOpacity);
+        }
+        resolve();
+      });
+    });
+  }
 } 
