@@ -13,28 +13,31 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const micMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const systemMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const micAudioChunksRef = useRef<Blob[]>([]);
+  const systemAudioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const systemStreamRef = useRef<MediaStream | null>(null);
 
   const RECORDING_DURATION = 10000; // Record for 10 seconds at a time
 
-  const processAudioChunks = useCallback(async () => {
-    if (audioChunksRef.current.length === 0) return;
+  const processAudioChunks = useCallback(async (chunks: Blob[], source: 'mic' | 'system') => {
+    if (chunks.length === 0) return;
 
     try {
       setIsTranscribing(true);
       
       // Create audio blob from chunks
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+      const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
       
       if (audioBlob.size === 0) {
         setIsTranscribing(false);
         return;
       }
       
-      console.log('Processing audio chunk, size:', audioBlob.size);
+      console.log(`Processing ${source} audio chunk, size:`, audioBlob.size);
       
       // Convert blob to array buffer
       const arrayBuffer = await audioBlob.arrayBuffer();
@@ -46,52 +49,78 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       );
       
       if (transcription && transcription.trim()) {
-        console.log('Audio transcribed:', transcription.substring(0, 100) + '...');
+        console.log(`${source} audio transcribed:`, transcription.substring(0, 100) + '...');
         // The main process will handle adding this to memory
       }
       
       setIsTranscribing(false);
       
     } catch (error) {
-      console.error('Error processing audio chunks:', error);
+      console.error(`Error processing ${source} audio chunks:`, error);
       setIsTranscribing(false);
-      setError('Failed to transcribe audio chunk');
+      setError(`Failed to transcribe ${source} audio chunk`);
     }
   }, []);
 
   const startRecordingSession = useCallback(async () => {
-    if (!streamRef.current) return;
+    if (!micStreamRef.current && !systemStreamRef.current) return;
 
     try {
-      // Create new MediaRecorder for this session
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      
-      // Handle data availability
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-      
-      // Handle recording stop
-      mediaRecorder.onstop = () => {
-        processAudioChunks();
-      };
-      
-      // Start recording
-      mediaRecorder.start(250); // Collect data every 250ms
-      
-      // Stop recording after duration
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop();
-        }
-      }, RECORDING_DURATION);
+      // Start microphone recording
+      if (micStreamRef.current) {
+        const micMediaRecorder = new MediaRecorder(micStreamRef.current, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        micMediaRecorderRef.current = micMediaRecorder;
+        micAudioChunksRef.current = [];
+        
+        micMediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            micAudioChunksRef.current.push(event.data);
+          }
+        };
+        
+        micMediaRecorder.onstop = () => {
+          processAudioChunks(micAudioChunksRef.current, 'mic');
+        };
+        
+        micMediaRecorder.start(250);
+        
+        setTimeout(() => {
+          if (micMediaRecorder.state === 'recording') {
+            micMediaRecorder.stop();
+          }
+        }, RECORDING_DURATION);
+      }
+
+      // Start system audio recording
+      if (systemStreamRef.current) {
+        const systemMediaRecorder = new MediaRecorder(systemStreamRef.current, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        systemMediaRecorderRef.current = systemMediaRecorder;
+        systemAudioChunksRef.current = [];
+        
+        systemMediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            systemAudioChunksRef.current.push(event.data);
+          }
+        };
+        
+        systemMediaRecorder.onstop = () => {
+          processAudioChunks(systemAudioChunksRef.current, 'system');
+        };
+        
+        systemMediaRecorder.start(250);
+        
+        setTimeout(() => {
+          if (systemMediaRecorder.state === 'recording') {
+            systemMediaRecorder.stop();
+          }
+        }, RECORDING_DURATION);
+      }
       
     } catch (error) {
       console.error('Error starting recording session:', error);
@@ -104,10 +133,40 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       setError(null);
       
       // Get microphone stream
-      const stream = await (window as any).electronAPI.getMicrophoneStream();
-      streamRef.current = stream;
-      setIsRecording(true);
+      try {
+        const micStream = await (window as any).electronAPI.getMicrophoneStream();
+        micStreamRef.current = micStream;
+        console.log('Microphone stream obtained');
+      } catch (error) {
+        console.warn('Failed to get microphone stream:', error);
+        setError('Microphone access failed - continuing with system audio only');
+      }
       
+      // Get system audio stream (via screen capture with audio)
+      try {
+        const systemStream = await navigator.mediaDevices.getDisplayMedia({
+          video: false,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 44100
+          } as any
+        });
+        systemStreamRef.current = systemStream;
+        console.log('System audio stream obtained');
+      } catch (error) {
+        console.warn('Failed to get system audio stream:', error);
+        if (!micStreamRef.current) {
+          throw new Error('Failed to get both microphone and system audio');
+        }
+      }
+      
+      if (!micStreamRef.current && !systemStreamRef.current) {
+        throw new Error('No audio streams available');
+      }
+      
+      setIsRecording(true);
       console.log('Continuous audio recording started');
       
       // Start first recording session
@@ -122,7 +181,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       
     } catch (error) {
       console.error('Error starting continuous recording:', error);
-      setError('Failed to start continuous recording. Please check microphone permissions.');
+      setError('Failed to start continuous recording. Please check audio permissions.');
       setIsRecording(false);
     }
   }, [startRecordingSession, isRecording, isTranscribing]);
@@ -136,15 +195,22 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       recordingIntervalRef.current = null;
     }
     
-    // Stop current recording
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+    // Stop current recordings
+    if (micMediaRecorderRef.current && micMediaRecorderRef.current.state === 'recording') {
+      micMediaRecorderRef.current.stop();
+    }
+    if (systemMediaRecorderRef.current && systemMediaRecorderRef.current.state === 'recording') {
+      systemMediaRecorderRef.current.stop();
     }
     
-    // Stop stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    // Stop streams
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (systemStreamRef.current) {
+      systemStreamRef.current.getTracks().forEach(track => track.stop());
+      systemStreamRef.current = null;
     }
     
     setIsRecording(false);
