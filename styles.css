@@ -160,18 +160,61 @@ body {
 }
 
 .message-content pre {
-    background-color: #2a1833;
-    padding: 12px;
-    border-radius: 8px;
-    overflow-x: auto;
-    margin: 8px 0;
-    border: 1px solid #3d2447;
+    margin: 1em 0;
+    padding: 1em;
+    overflow: auto;
+    transition: all 0.3s ease;
 }
 
+.message-content pre > div {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+}
+
+.message-content code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    transition: all 0.3s ease;
+}
+
+/* Ensure code block text remains readable */
 .message-content pre code {
-    background-color: transparent;
-    padding: 0;
-    color: #c9a7d8;
+    color: #d4d4d4 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Adjust token colors for better visibility on transparent background */
+.message-content .token.comment {
+    color: #6a9955 !important;
+    font-style: italic;
+}
+
+.message-content .token.string {
+    color: #ce9178 !important;
+}
+
+.message-content .token.keyword {
+    color: #569cd6 !important;
+}
+
+.message-content .token.function {
+    color: #dcdcaa !important;
+}
+
+.message-content .token.number {
+    color: #b5cea8 !important;
+}
+
+.message-content .token.operator {
+    color: #d4d4d4 !important;
+}
+
+/* Add subtle hover effect */
+.message-content pre:hover {
+    background: rgba(30, 30, 30, 0.75) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .message-content ul,

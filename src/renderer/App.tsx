@@ -6,6 +6,33 @@ import { useAudioRecording } from './hooks/useAudioRecording';
 import './App.css';
 import { RefreshCw } from 'lucide-react';
 
+// Create a custom theme based on vscDarkPlus but with transparency
+const transparentTheme = {
+  ...vscDarkPlus,
+  'pre[class*="language-"]': {
+    ...vscDarkPlus['pre[class*="language-"]'],
+    background: 'rgba(30, 30, 30, 0.6)',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '6px',
+  },
+  'code[class*="language-"]': {
+    ...vscDarkPlus['code[class*="language-"]'],
+    background: 'transparent',
+    textShadow: 'none',
+  }
+};
+
+// Custom inline code style
+const inlineCodeStyle = {
+  backgroundColor: 'rgba(30, 30, 30, 0.6)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  borderRadius: '4px',
+  padding: '2px 6px',
+  fontFamily: 'monospace',
+};
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -245,20 +272,23 @@ const App: React.FC = () => {
                 {message.role === 'assistant' ? (
                   <ReactMarkdown
                     components={{
-                      code({ node, className, children, ...props }: any) {
+                      code({ node, inline, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
-                        const inline = !match;
                         return !inline ? (
                           <SyntaxHighlighter
-                            style={vscDarkPlus as any}
-                            language={match[1]}
+                            style={transparentTheme as any}
+                            language={match ? match[1] : 'text'}
                             PreTag="div"
                             {...props}
                           >
                             {String(children).replace(/\n$/, '')}
                           </SyntaxHighlighter>
                         ) : (
-                          <code className={className} {...props}>
+                          <code
+                            style={inlineCodeStyle}
+                            className={className}
+                            {...props}
+                          >
                             {children}
                           </code>
                         );
