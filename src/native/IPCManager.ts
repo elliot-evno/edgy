@@ -42,14 +42,26 @@ export class IPCManager {
     // Chat handlers
     ipcMain.handle('chat-gemini', async (_event: IpcMainInvokeEvent, args: {
       message: string;
-      screenText?: string;
-      imageDataURL?: string;
       messageId?: string;
     }) => {
       try {
-        const { message, screenText, imageDataURL, messageId } = args;
+        const { message, messageId } = args;
         const streamId = messageId || Date.now().toString();
         
+        // Take a screenshot for both memory and Gemini
+        const screenCapture = await this.screenManager.captureScreen();
+        let screenText = '';
+        let imageDataURL = '';
+        
+        if (screenCapture) {
+          imageDataURL = screenCapture.dataURL;
+          screenText = await this.screenManager.extractText(screenCapture.dataURL);
+          if (screenText.trim()) {
+            await this.memoryManager.addToMemory(screenText.trim());
+          }
+        }
+        
+        // Get memory and audio context
         const memoryContext = this.memoryManager.getMemoryContext();
         const audioContext = this.memoryManager.getAudioContext();
         

@@ -27,7 +27,8 @@ const App: React.FC = () => {
   // Audio recording hook
   const { 
     startContinuousRecording, 
-    error: audioError 
+    error: audioError,
+    stopContinuousRecording
   } = useAudioRecording();
 
   useEffect(() => {
@@ -95,10 +96,9 @@ const App: React.FC = () => {
       console.log('Starting continuous audio recording...');
       await startContinuousRecording();
       console.log('Audio recording started successfully');
-      
     } catch (error) {
       console.error('Error initializing app:', error);
-      console.error('Failed to start audio recording:', error);
+      console.error('Failed to start recording:', error);
     }
   };
 
@@ -176,6 +176,13 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopContinuousRecording();
+    };
+  }, [stopContinuousRecording]);
 
   return (
     <div className="app-container">
