@@ -1,510 +1,64 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, IpcMainInvokeEvent, globalShortcut } from 'electron';
+import { app, globalShortcut } from 'electron';
 import * as dotenv from 'dotenv';
-import * as Tesseract from 'tesseract.js';
-import { setInterval, clearInterval } from 'timers';
-import * as path from 'path';
-import { apiServer } from './server/api';
-import * as fs from 'fs';
-import * as os from 'os';
+import { WindowManager } from './native/WindowManager';
+import { ScreenManager } from './native/ScreenManager';
+import { MemoryManager } from './native/MemoryManager';
+import { IPCManager } from './native/IPCManager';
 
 dotenv.config();
-
-let mainWindow: BrowserWindow | null = null;
-let streamingInterval: NodeJS.Timeout | null = null;
-let memoryInterval: NodeJS.Timeout | null = null;
 
 // Debug mode
 const isDebugMode = process.argv.includes('--debug') || process.env.DEBUG_MODE === 'true';
 const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
-let ignoreMouseEvents = process.argv.includes('--ignore-mouse-events') || process.env.IGNORE_MOUSE_EVENTS === 'true';
+const ignoreMouseEvents = process.argv.includes('--ignore-mouse-events') || process.env.IGNORE_MOUSE_EVENTS === 'true';
 
-// Memory management
-interface MemoryEntry {
-  timestamp: number;
-  content: string;
-}
+// Managers
+let windowManager: WindowManager;
+let screenManager: ScreenManager;
+let memoryManager: MemoryManager;
+let ipcManager: IPCManager;
 
-let currentMemory: string = '';
-let currentAudioTranscript: string = '';
-const MEMORY_CAPTURE_INTERVAL = 5000; // 5 seconds
-
-function logMemory(message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  console.log(`[MEMORY ${timestamp}] ${message}`, data || '');
-}
-
-function logAudio(message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  console.log(`[AUDIO ${timestamp}] ${message}`, data || '');
-}
-
-function createWindow(): void {
-  const { screen } = require('electron');
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
-  
-  const windowWidth = 400;
-  const windowHeight = 600;
-  const x = width - windowWidth - 20;
-  const y = 40;
-
-  mainWindow = new BrowserWindow({
-    width: windowWidth,
-    height: windowHeight,
-    x: x,
-    y: y,
-    frame: false,
-    resizable: true,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    fullscreenable: false,
-    show: false,              // Don't show until ready
-    transparent: true,        // Enable window transparency
-    backgroundColor: '#00000000', // Transparent background
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false
-    }
-  });
-
-  // Set window properties when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.setAlwaysOnTop(true, "floating");
-    mainWindow?.setVisibleOnAllWorkspaces(true);
-    mainWindow?.setFullScreenable(false);
-    
-    if (ignoreMouseEvents === true) {
-      mainWindow?.setIgnoreMouseEvents(true);
-    }
-    
-    mainWindow?.show();
-  });
-
-  // Load the app
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist-react/index.html'));
-  }
-  if (ignoreMouseEvents === true) {
-    mainWindow.setIgnoreMouseEvents(true);
-  } else {
-    mainWindow.setIgnoreMouseEvents(false);
-  }
-
-  
-  // Handle permissions for screen capture
-  mainWindow.webContents.session.setPermissionRequestHandler((_, permission, callback) => {
-    if (permission === 'media') {
-      callback(true);
-    } else {
-      callback(false);
-    }
+function initializeApp(): void {
+  // Initialize managers
+  windowManager = new WindowManager({
+    isDebugMode,
+    isDev,
+    ignoreMouseEvents
   });
   
-  // Send debug mode to renderer when ready
-  mainWindow.webContents.once('did-finish-load', () => {
-    mainWindow?.webContents.send('set-debug-mode', isDebugMode);
-    
-    // Auto-start memory capture
-    logMemory('Starting automatic memory capture');
-    startMemoryCapture();
-  });
+  screenManager = new ScreenManager();
+  memoryManager = new MemoryManager(screenManager, isDebugMode);
   
-  // Only open DevTools in debug mode
-  if (isDebugMode) {
-    mainWindow.webContents.openDevTools();
-  }
+  ipcManager = new IPCManager(
+    windowManager,
+    screenManager,
+    memoryManager,
+    isDebugMode
+  );
+
+  // Create the main window
+  windowManager.createWindow();
+  
+  // Register global shortcut for Cmd+G to toggle mouse events
+  globalShortcut.register('CommandOrControl+G', () => {
+    windowManager.toggleMouseEvents();
+  });
 }
 
 app.whenReady().then(() => {
-  // Hide dock icon
+  // Hide dock icon on macOS
   if (process.platform === 'darwin') {
     app.dock.hide();
   }
   
-  createWindow();
-  
-  // Register global shortcut for Cmd+G to toggle mouse events
-  globalShortcut.register('CommandOrControl+G', () => {
-    if (mainWindow) {
-      ignoreMouseEvents = !ignoreMouseEvents;
-      mainWindow.setIgnoreMouseEvents(ignoreMouseEvents);
-      console.log(`Mouse events ${ignoreMouseEvents ? 'ignored' : 'enabled'}`);
-      
-      // Send status to renderer if in debug mode
-      if (isDebugMode) {
-        mainWindow.webContents.send('mouse-events-toggled', ignoreMouseEvents);
-      }
-    }
-  });
+  initializeApp();
 });
 
 app.on('window-all-closed', () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll();
-  if (process.platform !== 'darwin') app.quit();
-});
-
-// Capture screen
-ipcMain.handle('capture-screen', async (): Promise<{ dataURL: string } | null> => {
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
-    });
-    
-    if (sources.length === 0) return null;
-    const dataURL = sources[0].thumbnail.toDataURL();
-    return { dataURL };
-  } catch (error) {
-    console.error('Error capturing screen:', error);
-    return null;
-  }
-});
-
-// Extract text from screen
-ipcMain.handle('extract-text', async (_event: IpcMainInvokeEvent, imageDataURL: string): Promise<string> => {
-  if (!imageDataURL || typeof imageDataURL !== 'string' || !imageDataURL.startsWith('data:image')) {
-    throw new Error('Invalid imageDataURL provided to extract-text');
-  }
-  try {
-    const { data: { text } } = await Tesseract.recognize(imageDataURL, 'eng');
-    return text;
-  } catch (error) {
-    console.error('Error extracting text:', error);
-    return '';
-  }
-});
-
-// Chat with Gemini using API server
-interface ChatGeminiArgs {
-  message: string;
-  screenText?: string;
-  imageDataURL?: string;
-  messageId?: string;
-}
-
-ipcMain.handle('chat-gemini', async (_event: IpcMainInvokeEvent, { message, screenText, imageDataURL, messageId }: ChatGeminiArgs): Promise<string> => {
-  try {
-    // Generate a unique message ID if not provided
-    const streamId = messageId || Date.now().toString();
-    
-    // Add memory context
-    const memoryContext = getMemoryContext();
-    
-    // Add audio context
-    const audioContext = getAudioContext();
-    
-    // Call the API server
-    const responseStream = await apiServer.chatWithGemini({
-      message,
-      screenText,
-      imageDataURL,
-      memoryContext,
-      audioContext
-    });
-    
-    let fullResponse = '';
-    
-    try {
-      for await (const text of responseStream) {
-        fullResponse = text;
-        
-        // Send streaming update to the specific renderer
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('gemini-stream', {
-            streamId,
-            text: fullResponse,
-            done: false
-          });
-        }
-      }
-      
-      // Send final message indicating stream is complete
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('gemini-stream', {
-          streamId,
-          text: fullResponse,
-          done: true
-        });
-      }
-    } catch (error) {
-      console.error('Error in stream:', error);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('gemini-stream', {
-          streamId,
-          text: 'Error: Failed to stream response.',
-          done: true,
-          error: true
-        });
-      }
-    }
-    
-    return fullResponse;
-  } catch (error: any) {
-    console.error('Error with Gemini:', error);
-    return `Error: ${error.message}`;
-  }
-});
-
-ipcMain.handle('start-screen-stream', async (event) => {
-  if (streamingInterval) return;
-  streamingInterval = setInterval(async () => {
-    try {
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width: 1280, height: 720 }
-      });
-      if (sources.length === 0) return;
-      const dataURL = sources[0].thumbnail.toDataURL();
-      event.sender.send('screen-frame', dataURL);
-    } catch (error) {
-      console.error('Error streaming screen:', error);
-    }
-  }, 200);
-});
-
-ipcMain.handle('stop-screen-stream', () => {
-  if (streamingInterval) {
-    clearInterval(streamingInterval);
-    streamingInterval = null;
-  }
-});
-
-// Get screen source ID for recording
-ipcMain.handle('get-screen-source-id', async () => {
-  try {
-    const sources = await desktopCapturer.getSources({ 
-      types: ['screen'],
-      thumbnailSize: { width: 150, height: 150 }
-    });
-    if (sources.length === 0) throw new Error('No screen sources found');
-    return sources[0].id;
-  } catch (error) {
-    console.error('Error getting screen sources:', error);
-    throw error;
-  }
-});
-
-// Memory management functions
-function startMemoryCapture(): void {
-  if (memoryInterval) {
-    logMemory('Memory capture already running');
-    return;
-  }
   
-  logMemory('Starting memory capture', { interval: MEMORY_CAPTURE_INTERVAL });
-  
-  memoryInterval = setInterval(async () => {
-    try {
-      // Capture screenshot
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 }
-      });
-      
-      if (sources.length === 0) {
-        logMemory('No screen sources available');
-        return;
-      }
-      
-      const dataURL = sources[0].thumbnail.toDataURL();
-      
-      // Extract text using OCR
-      const { data: { text } } = await Tesseract.recognize(dataURL, 'eng');
-      
-      if (text.trim()) {
-        await addToMemory(text.trim());
-        logMemory('Screen content captured and processed', { 
-          textLength: text.length,
-          totalEntries: currentMemory.length 
-        });
-      }
-    } catch (error) {
-      logMemory('Error in memory capture', error);
-    }
-  }, MEMORY_CAPTURE_INTERVAL);
-}
-
-function stopMemoryCapture(): void {
-  if (memoryInterval) {
-    clearInterval(memoryInterval);
-    memoryInterval = null;
-    logMemory('Memory capture stopped');
+  if (process.platform !== 'darwin') {
+    app.quit();
   }
-}
-
-async function addToMemory(content: string): Promise<void> {
-  try {
-    if (!currentMemory) {
-      // If no existing memory, just set it
-      currentMemory = content;
-      logMemory('Updated memory (first entry)', { 
-        contentPreview: content.substring(0, 50) + '...',
-        memoryLength: currentMemory.length 
-      });
-      return;
-    }
-
-    // Use API server to update memory with AI
-    const audioContext = currentAudioTranscript ? `\n\nRecent audio: "${currentAudioTranscript}"` : '';
-    
-    const prompt = `Update technical session memory. Focus on code, problems, and key context.
-
-Current: "${currentMemory || 'Empty'}"
-Screen: "${content}"${audioContext}
-
-Keep concise. Focus on:
-- Code/algorithms being worked on
-- Technical problems/solutions
-- Important changes
-- Interview context
-
-Updated memory:`;
-
-    try {
-      const responseStream = await apiServer.chatWithGemini({
-        message: prompt,
-        screenText: '',
-        imageDataURL: ''
-      });
-      
-      let updatedMemory = '';
-      for await (const text of responseStream) {
-        updatedMemory = text;
-      }
-      
-      currentMemory = updatedMemory.trim();
-      
-      logMemory('Memory updated by AI (with audio context)', { 
-        newContentPreview: content.substring(0, 50) + '...',
-        audioContextLength: currentAudioTranscript.length,
-        updatedMemoryPreview: updatedMemory.substring(0, 100) + '...',
-        memoryLength: currentMemory.length 
-      });
-      
-      // Notify frontend if in debug mode
-      if (mainWindow && isDebugMode) {
-        mainWindow.webContents.send('memory-updated', { timestamp: Date.now(), content: updatedMemory });
-      }
-    } catch (error) {
-      logMemory('Error updating memory with AI, using simple replacement', error);
-      // Fallback: just replace the memory
-      currentMemory = content;
-    }
-  } catch (error) {
-    logMemory('Error updating memory, using simple replacement', error);
-    currentMemory = content;
-  }
-}
-
-function getMemoryContext(): string {
-  if (!currentMemory) return '';
-  return `\n\nContext: ${currentMemory}`;
-}
-
-// Audio transcription using API server
-ipcMain.handle('transcribe-audio', async (_event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, mimeType?: string): Promise<string> => {
-  try {
-    const buffer = Buffer.from(audioBuffer);
-    const transcription = await apiServer.transcribeAudio(buffer, mimeType || 'audio/wav');
-    
-    // Add to memory if transcription is successful
-    if (transcription) {
-      await addAudioToMemory(transcription);
-    }
-    
-    return transcription;
-  } catch (error) {
-    logAudio('Error in transcribe-audio IPC handler', error);
-    return '';
-  }
-});
-
-function getAudioContext(): string {
-  if (!currentAudioTranscript) return '';
-  return `\n\nAudio: ${currentAudioTranscript}`;
-}
-
-// Audio transcription functions
-async function transcribeAudioFile(audioBuffer: Buffer, mimeType: string = 'audio/wav'): Promise<string> {
-  if (!currentAudioTranscript) return '';
-  
-  try {
-    logAudio('Transcribing audio file', { fileSize: audioBuffer.length });
-    
-    // Call the API server
-    const transcription = await apiServer.transcribeAudio(audioBuffer, mimeType);
-    
-    logAudio('Audio transcription completed', { 
-      textLength: transcription.length,
-      preview: transcription.substring(0, 100) + '...'
-    });
-    
-    return transcription;
-  } catch (error) {
-    logAudio('Error transcribing audio', error);
-    return '';
-  }
-}
-
-async function addAudioToMemory(audioText: string): Promise<void> {
-  if (!audioText.trim()) return;
-  
-  currentAudioTranscript = audioText;
-  logAudio('Audio transcript updated', {
-    textLength: audioText.length,
-    preview: audioText.substring(0, 100) + '...'
-  });
-  
-  // Notify frontend if in debug mode
-  if (mainWindow && isDebugMode) {
-    mainWindow.webContents.send('audio-transcript-updated', { 
-      timestamp: Date.now(), 
-      content: audioText 
-    });
-  }
-}
-
-// Memory management functions
-if (isDebugMode) {
-  ipcMain.handle('start-memory-capture', async () => {
-    startMemoryCapture();
-    return 'Memory capture started';
-  });
-
-  ipcMain.handle('stop-memory-capture', async () => {
-    stopMemoryCapture();
-    return 'Memory capture stopped';
-  });
-
-  ipcMain.handle('get-memory-entries', async () => {
-    return currentMemory;
-  });
-
-  ipcMain.handle('clear-memory', async () => {
-    logMemory('Memory cleared via debug interface');
-    currentMemory = '';
-    return 'Memory cleared';
-  });
-}
-
-// Always available IPC handlers
-ipcMain.handle('get-debug-mode', async () => {
-  return isDebugMode;
-});
-
-// Add this after other ipcMain handlers
-ipcMain.handle('resize-window', async (_event: IpcMainInvokeEvent, height: number) => {
-  if (mainWindow) {
-    const [width] = mainWindow.getSize();
-    mainWindow.setSize(width, height);
-  }
-});
-
-ipcMain.handle('get-audio-transcript', async () => {
-  return currentAudioTranscript;
 });
