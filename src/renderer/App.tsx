@@ -1,25 +1,36 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import ChatPanel from './components/ChatPanel';
-import DebugPanel from './components/DebugPanel';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './App.css';
 
+interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 const App: React.FC = () => {
-  const [isDebugMode, setIsDebugMode] = useState(false);
-  const [assistantStarted, setAssistantStarted] = useState(false);
-  const [messages, setMessages] = useState<Array<{ text: string; type: 'user' | 'ai' | 'system' }>>([
-    { text: "Hi! I'm monitoring your screen and learning from your activity. Ask me anything about what you're working on!", type: 'ai' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     initializeApp();
   }, []);
 
+  useEffect(() => {
+    // Scroll to bottom when messages change
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   const initializeApp = async () => {
     try {
       const debugMode = await (window as any).electronAPI.getDebugMode();
-      setIsDebugMode(debugMode);
       
-      addMessage('🤖 AI Assistant ready! Memory capture is running automatically.', 'system');
       if (debugMode) {
         addMessage('🔧 Debug mode enabled - showing advanced controls.', 'system');
       }
@@ -30,41 +41,115 @@ const App: React.FC = () => {
   };
 
   const addMessage = useCallback((text: string, type: 'user' | 'ai' | 'system') => {
-    setMessages(prev => [...prev, { text, type }]);
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: type === 'user' ? 'user' : 'assistant',
+      content: text
+    };
+    setMessages(prev => [...prev, newMessage]);
   }, []);
 
-  const toggleAssistant = () => {
-    setAssistantStarted(!assistantStarted);
-    
-    if (!assistantStarted) {
-      addMessage('✅ Assistant activated! I\'m now monitoring your screen.', 'system');
-    } else {
-      addMessage('⏸️ Assistant paused.', 'system');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input.trim()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await (window as any).electronAPI.chatGemini({
+        message: input.trim()
+      });
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.'
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="main-container">
-      <div className="header">
-        <h1>🤖 AI Screen Assistant</h1>
-        <button 
-          className="start-btn" 
-          onClick={toggleAssistant}
-          style={{ backgroundColor: assistantStarted ? '#dc3545' : '#28a745' }}
-        >
-          {assistantStarted ? '⏹️ Stop Assistant' : '🚀 Start Assistant'}
-        </button>
+    <div className="app-container">
+      <div className="chat-container" ref={chatContainerRef}>
+        {messages.map(message => (
+          <div key={message.id} className={`message ${message.role}`}>
+            <div className="message-content">
+              {message.role === 'assistant' ? (
+                <ReactMarkdown
+                  components={{
+                    code({ node, className, children, ...props }: any) {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const inline = !match;
+                      return !inline ? (
+                        <SyntaxHighlighter
+                          style={vscDarkPlus as any}
+                          language={match[1]}
+                          PreTag="div"
+                          {...props}
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      ) : (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              ) : (
+                message.content
+              )}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="message assistant">
+            <div className="message-content">
+              <div className="loading"></div>
+            </div>
+          </div>
+        )}
       </div>
       
-      {isDebugMode && (
-        <DebugPanel addMessage={addMessage} />
-      )}
-      
-      <ChatPanel 
-        messages={messages} 
-        addMessage={addMessage}
-        assistantStarted={assistantStarted}
-      />
+      <div className="input-container">
+        <form onSubmit={handleSubmit} className="input-wrapper">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type your message..."
+            className="chat-input"
+            disabled={isLoading}
+          />
+          <button type="submit" disabled={isLoading || !input.trim()} className="send-button">
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
