@@ -25,6 +25,7 @@ body {
     background-color: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(10px);
     border-radius: 8px;
+    transition: height 0.3s ease-in-out;
 }
 
 .title-bar {
@@ -33,10 +34,28 @@ body {
     -webkit-app-region: drag;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
+}
+
+.toggle-button {
+    -webkit-app-region: no-drag;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.toggle-button:hover {
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .chat-container {
@@ -243,4 +262,21 @@ body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+.chat-section {
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease-in-out;
+    overflow: hidden;
+}
+
+.chat-section.collapsed {
+    height: 0;
+    opacity: 0;
+}
+
+.chat-section.expanded {
+    flex: 1;
+    opacity: 1;
 }

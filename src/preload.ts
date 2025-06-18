@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Basic IPC
   invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
   
+  // Window management
+  resizeWindow: (height: number) => ipcRenderer.invoke('resize-window', height),
+  
   // Listen for events
   on: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.on(channel, callback);

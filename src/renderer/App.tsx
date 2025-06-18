@@ -15,7 +15,11 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  const HEADER_HEIGHT = 30;
+  const EXPANDED_HEIGHT = 600; // Default window height
   
   // Audio recording hook
   const { 
@@ -52,6 +56,15 @@ const App: React.FC = () => {
       console.error('Audio Error:', audioError);
     }
   }, [audioError]);
+
+  const toggleChat = async () => {
+    const newIsExpanded = !isExpanded;
+    setIsExpanded(newIsExpanded);
+    
+    // Resize the window
+    const newHeight = newIsExpanded ? EXPANDED_HEIGHT : HEADER_HEIGHT;
+    await (window as any).electronAPI.resizeWindow(newHeight);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,65 +107,75 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <div className="title-bar"></div>
-      <div className="chat-container" ref={chatContainerRef}>
-        {messages.map(message => (
-          <div key={message.id} className={`message ${message.role}`}>
-            <div className="message-content">
-              {message.role === 'assistant' ? (
-                <ReactMarkdown
-                  components={{
-                    code({ node, className, children, ...props }: any) {
-                      const match = /language-(\w+)/.exec(className || '');
-                      const inline = !match;
-                      return !inline ? (
-                        <SyntaxHighlighter
-                          style={vscDarkPlus as any}
-                          language={match[1]}
-                          PreTag="div"
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      );
-                    }
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
-              ) : (
-                message.content
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="message assistant">
-            <div className="message-content">
-              <div className="loading"></div>
-            </div>
-          </div>
-        )}
+      <div className="title-bar">
+        <button 
+          className="toggle-button"
+          onClick={toggleChat}
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
+          {isExpanded ? '▼' : '▲'}
+        </button>
       </div>
-      
-      <div className="input-container">
-        <form onSubmit={handleSubmit} className="input-wrapper">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
-            className="chat-input"
-            disabled={isLoading}
-          />
-          <button type="submit" disabled={isLoading || !input.trim()} className="send-button">
-            Send
-          </button>
-        </form>
+      <div className={`chat-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
+        <div className="chat-container" ref={chatContainerRef}>
+          {messages.map(message => (
+            <div key={message.id} className={`message ${message.role}`}>
+              <div className="message-content">
+                {message.role === 'assistant' ? (
+                  <ReactMarkdown
+                    components={{
+                      code({ node, className, children, ...props }: any) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const inline = !match;
+                        return !inline ? (
+                          <SyntaxHighlighter
+                            style={vscDarkPlus as any}
+                            language={match[1]}
+                            PreTag="div"
+                            {...props}
+                          >
+                            {String(children).replace(/\n$/, '')}
+                          </SyntaxHighlighter>
+                        ) : (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                ) : (
+                  message.content
+                )}
+              </div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="message assistant">
+              <div className="message-content">
+                <div className="loading"></div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="input-container">
+          <form onSubmit={handleSubmit} className="input-wrapper">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your message..."
+              className="chat-input"
+              disabled={isLoading}
+            />
+            <button type="submit" disabled={isLoading || !input.trim()} className="send-button">
+              Send
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

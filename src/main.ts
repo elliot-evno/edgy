@@ -533,3 +533,11 @@ if (isDebugMode) {
 ipcMain.handle('get-debug-mode', async () => {
   return isDebugMode;
 });
+
+// Add this after other ipcMain handlers
+ipcMain.handle('resize-window', async (_event: IpcMainInvokeEvent, height: number) => {
+  if (mainWindow) {
+    const [width] = mainWindow.getSize();
+    mainWindow.setSize(width, height);
+  }
+});
