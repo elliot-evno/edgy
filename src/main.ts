@@ -61,6 +61,8 @@ function createWindow(): void {
     alwaysOnTop: true,
     fullscreenable: false,
     show: false,              // Don't show until ready
+    transparent: true,        // Enable window transparency
+    backgroundColor: '#00000000', // Transparent background
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
