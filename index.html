@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Screen AI Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .screen-panel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-panel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h2 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        
+        .screen-preview {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        
+        #screenImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .placeholder {
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+        }
+        
+        .capture-btn {
+            background: rgba(46, 213, 115, 0.8);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .capture-btn:hover {
+            background: rgba(46, 213, 115, 1);
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .message {
+            padding: 10px 15px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .user-message {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            align-self: flex-end;
+        }
+        
+        .ai-message {
+            background: rgba(102, 126, 234, 0.8);
+            color: white;
+            align-self: flex-start;
+        }
+        
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+        }
+        
+        .send-btn {
+            background: rgba(102, 126, 234, 0.8);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .send-btn:hover {
+            background: rgba(102, 126, 234, 1);
+        }
+        
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="screen-panel">
+        <h2>📺 Screen Capture</h2>
+        <div class="screen-preview" id="screenPreview">
+            <video id="screenVideo" autoplay playsinline style="max-width:100%; max-height:100%;"></video>
+        </div>
+        <button class="capture-btn" id="captureBtn">🎥 Start Screen Recording</button>
+    </div>
+    
+    <div class="chat-panel">
+        <h2>🤖 AI Chat</h2>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai-message">
+                Hi! I can see your screen and help answer questions about it. Capture your screen first, then ask me anything!
+            </div>
+        </div>
+        <div class="chat-input-container">
+            <input type="text" class="chat-input" id="chatInput" placeholder="Ask about your screen...">
+            <button class="send-btn" id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // Use the exposed electronAPI from preload.js
+        let currentScreenText = '';
+        let currentImageDataURL = '';
+        
+        // Elements
+        const screenPreview = document.getElementById('screenPreview');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatMessages = document.getElementById('chatMessages');
+        
+        const captureBtn = document.getElementById('captureBtn');
+        const screenVideo = document.getElementById('screenVideo');
+
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordedVideoBlob = null;
+
+        captureBtn.addEventListener('click', async () => {
+            if (!mediaStream) {
+                try {
+                    const { ipcRenderer } = require('electron');
+                    const sourceId = await ipcRenderer.invoke('get-screen-source-id');
+                    
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: false,
+                        video: {
+                            mandatory: {
+                                chromeMediaSource: 'desktop',
+                                chromeMediaSourceId: sourceId,
+                                maxWidth: 1920,
+                                maxHeight: 1080
+                            }
+                        }
+                    });
+                    
+                    console.log('MediaStream received:', mediaStream);
+                    console.log('MediaStream type:', typeof mediaStream);
+                    console.log('Has getTracks:', !!mediaStream.getTracks);
+                    screenVideo.srcObject = mediaStream;
+                    
+                    // Initialize MediaRecorder for recording
+                    mediaRecorder = new MediaRecorder(mediaStream, {
+                        mimeType: 'video/webm;codecs=vp9'
+                    });
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            recordedChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = () => {
+                        recordedVideoBlob = new Blob(recordedChunks, {
+                            type: 'video/webm'
+                        });
+                        recordedChunks = [];
+                        
+                        // Show recorded video for playback
+                        screenVideo.srcObject = null;
+                        screenVideo.src = URL.createObjectURL(recordedVideoBlob);
+                        screenVideo.controls = true;
+                        screenVideo.loop = true;
+                        
+                        // Convert to base64 and send to Gemini
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            currentImageDataURL = reader.result;
+                            addMessage('Screen recording completed! You can now ask questions about the recorded content.', 'ai');
+                        };
+                        reader.readAsDataURL(recordedVideoBlob);
+                    };
+                    
+                    // Start recording
+                    mediaRecorder.start();
+                    captureBtn.textContent = '🛑 Stop Recording';
+                } catch (err) {
+                    console.error('Error capturing screen:', err);
+                }
+            } else {
+                // Stop recording
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+                
+                // Stop all tracks to end the stream
+                if (mediaStream && mediaStream.getTracks) {
+                    mediaStream.getTracks().forEach(track => track.stop());
+                }
+                mediaStream = null;
+                mediaRecorder = null;
+                captureBtn.textContent = '🎥 Start Screen Recording';
+            }
+        });
+        
+        // Send message
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+            
+            // Add user message
+            addMessage(message, 'user');
+            chatInput.value = '';
+            
+            sendBtn.classList.add('loading');
+            sendBtn.textContent = 'Thinking...';
+            
+            try {
+                const { ipcRenderer } = require('electron');
+                const response = await ipcRenderer.invoke('chat-gemini', {
+                    message,
+                    screenText: currentScreenText,
+                    imageDataURL: currentImageDataURL
+                });
+                addMessage(response, 'ai');
+            } catch (error) {
+                addMessage('Sorry, there was an error processing your message.', 'ai');
+            } finally {
+                sendBtn.classList.remove('loading');
+                sendBtn.textContent = 'Send';
+            }
+        }
+        
+        // Add message to chat
+        function addMessage(text, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            messageDiv.textContent = text;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
