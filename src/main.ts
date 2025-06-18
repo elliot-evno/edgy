@@ -1,18 +1,15 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, IpcMainInvokeEvent, globalShortcut } from 'electron';
 import * as dotenv from 'dotenv';
-import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import * as Tesseract from 'tesseract.js';
 import { setInterval, clearInterval } from 'timers';
 import * as path from 'path';
-import OpenAI from 'openai';
+import { apiServer } from './server/api';
 import * as fs from 'fs';
 import * as os from 'os';
 
 dotenv.config();
 
 let mainWindow: BrowserWindow | null = null;
-let geminiModel: GenerativeModel | null = null;
-let openaiClient: OpenAI | null = null;
 let streamingInterval: NodeJS.Timeout | null = null;
 let memoryInterval: NodeJS.Timeout | null = null;
 
@@ -40,6 +37,7 @@ function logAudio(message: string, data?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[AUDIO ${timestamp}] ${message}`, data || '');
 }
+
 function createWindow(): void {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -121,24 +119,6 @@ function createWindow(): void {
   }
 }
 
-function initializeAI(): void {
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (geminiApiKey) {
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
-    geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-  }
-  
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (openaiApiKey) {
-    openaiClient = new OpenAI({
-      apiKey: openaiApiKey,
-    });
-    logAudio('OpenAI client initialized for audio transcription');
-  } else {
-    logAudio('Warning: OPENAI_API_KEY not found. Audio transcription will be disabled.');
-  }
-}
-
 app.whenReady().then(() => {
   // Hide dock icon
   if (process.platform === 'darwin') {
@@ -146,7 +126,6 @@ app.whenReady().then(() => {
   }
   
   createWindow();
-  initializeAI();
   
   // Register global shortcut for Cmd+G to toggle mouse events
   globalShortcut.register('CommandOrControl+G', () => {
@@ -200,7 +179,7 @@ ipcMain.handle('extract-text', async (_event: IpcMainInvokeEvent, imageDataURL: 
   }
 });
 
-// Chat with Gemini
+// Chat with Gemini using API server
 interface ChatGeminiArgs {
   message: string;
   screenText?: string;
@@ -210,74 +189,29 @@ interface ChatGeminiArgs {
 
 ipcMain.handle('chat-gemini', async (_event: IpcMainInvokeEvent, { message, screenText, imageDataURL, messageId }: ChatGeminiArgs): Promise<string> => {
   try {
-    if (!geminiModel) {
-      return 'Error: Gemini API not initialized. Please check your API key in .env file.';
-    }
-    
     // Generate a unique message ID if not provided
     const streamId = messageId || Date.now().toString();
     
-    // Technical interview assistant system prompt
-    const systemPrompt = `You are a concise technical interview assistant. You can see the screen and hear audio. Provide direct, short answers. Never say "the user wants" or similar phrases. Help with:
-
-- Coding problems & algorithms
-- System design questions  
-- Debugging code
-- Technical concepts
-- Interview prep
-
-Be brief and actionable.`;
-    
-    const parts: any[] = [
-      { text: systemPrompt },
-      { text: `Question: ${message}` }
-    ];
-    
-    if (screenText) {
-      parts.push({ text: `Screen content: ${screenText}` });
-    }
-    
     // Add memory context
     const memoryContext = getMemoryContext();
-    if (memoryContext) {
-      parts.push({ text: memoryContext });
-    }
     
     // Add audio context
     const audioContext = getAudioContext();
-    if (audioContext) {
-      parts.push({ text: audioContext });
-    }
     
-    if (imageDataURL) {
-      const base64Data = imageDataURL.split(',')[1];
-      const mimeType = imageDataURL.split(';')[0].split(':')[1];
-      
-      if (mimeType.startsWith('video/')) {
-        parts.push({
-          inlineData: {
-            mimeType: mimeType,
-            data: base64Data
-          }
-        });
-        parts.push({ text: 'Please analyze this screen recording and describe what you see happening in the video.' });
-      } else {
-        parts.push({
-          inlineData: {
-            mimeType: mimeType || 'image/png',
-            data: base64Data
-          }
-        });
-      }
-    }
-
-    const result = await geminiModel.generateContentStream(parts);
+    // Call the API server
+    const responseStream = await apiServer.chatWithGemini({
+      message,
+      screenText,
+      imageDataURL,
+      memoryContext,
+      audioContext
+    });
+    
     let fullResponse = '';
     
     try {
-      for await (const chunk of result.stream) {
-        const text = chunk.text();
-        fullResponse += text;
+      for await (const text of responseStream) {
+        fullResponse = text;
         
         // Send streaming update to the specific renderer
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -405,17 +339,17 @@ function stopMemoryCapture(): void {
 
 async function addToMemory(content: string): Promise<void> {
   try {
-    if (!geminiModel) {
-      // Fallback: just replace the memory
+    if (!currentMemory) {
+      // If no existing memory, just set it
       currentMemory = content;
-      logMemory('Updated memory (no AI available)', { 
+      logMemory('Updated memory (first entry)', { 
         contentPreview: content.substring(0, 50) + '...',
         memoryLength: currentMemory.length 
       });
       return;
     }
 
-    // Use AI to update memory based on old memory + new content + audio context
+    // Use API server to update memory with AI
     const audioContext = currentAudioTranscript ? `\n\nRecent audio: "${currentAudioTranscript}"` : '';
     
     const prompt = `Update technical session memory. Focus on code, problems, and key context.
@@ -431,25 +365,38 @@ Keep concise. Focus on:
 
 Updated memory:`;
 
-    const result = await geminiModel.generateContent(prompt);
-    const updatedMemory = result.response.text().trim();
-    
-    currentMemory = updatedMemory;
-    
-    logMemory('Memory updated by AI (with audio context)', { 
-      newContentPreview: content.substring(0, 50) + '...',
-      audioContextLength: currentAudioTranscript.length,
-      updatedMemoryPreview: updatedMemory.substring(0, 100) + '...',
-      memoryLength: currentMemory.length 
-    });
-    
-    // Notify frontend if in debug mode
-    if (mainWindow && isDebugMode) {
-      mainWindow.webContents.send('memory-updated', { timestamp: Date.now(), content: updatedMemory });
+    try {
+      const responseStream = await apiServer.chatWithGemini({
+        message: prompt,
+        screenText: '',
+        imageDataURL: ''
+      });
+      
+      let updatedMemory = '';
+      for await (const text of responseStream) {
+        updatedMemory = text;
+      }
+      
+      currentMemory = updatedMemory.trim();
+      
+      logMemory('Memory updated by AI (with audio context)', { 
+        newContentPreview: content.substring(0, 50) + '...',
+        audioContextLength: currentAudioTranscript.length,
+        updatedMemoryPreview: updatedMemory.substring(0, 100) + '...',
+        memoryLength: currentMemory.length 
+      });
+      
+      // Notify frontend if in debug mode
+      if (mainWindow && isDebugMode) {
+        mainWindow.webContents.send('memory-updated', { timestamp: Date.now(), content: updatedMemory });
+      }
+    } catch (error) {
+      logMemory('Error updating memory with AI, using simple replacement', error);
+      // Fallback: just replace the memory
+      currentMemory = content;
     }
   } catch (error) {
-    logMemory('Error updating memory with AI, using simple replacement', error);
-    // Fallback: just replace the memory
+    logMemory('Error updating memory, using simple replacement', error);
     currentMemory = content;
   }
 }
@@ -459,39 +406,45 @@ function getMemoryContext(): string {
   return `\n\nContext: ${currentMemory}`;
 }
 
-// Audio transcription functions
-async function transcribeAudioFile(audioBuffer: Buffer, mimeType: string = 'audio/wav'): Promise<string> {
-  if (!openaiClient) {
-    logAudio('OpenAI client not available for transcription');
+// Audio transcription using API server
+ipcMain.handle('transcribe-audio', async (_event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, mimeType?: string): Promise<string> => {
+  try {
+    const buffer = Buffer.from(audioBuffer);
+    const transcription = await apiServer.transcribeAudio(buffer, mimeType || 'audio/wav');
+    
+    // Add to memory if transcription is successful
+    if (transcription) {
+      await addAudioToMemory(transcription);
+    }
+    
+    return transcription;
+  } catch (error) {
+    logAudio('Error in transcribe-audio IPC handler', error);
     return '';
   }
+});
 
+function getAudioContext(): string {
+  if (!currentAudioTranscript) return '';
+  return `\n\nAudio: ${currentAudioTranscript}`;
+}
+
+// Audio transcription functions
+async function transcribeAudioFile(audioBuffer: Buffer, mimeType: string = 'audio/wav'): Promise<string> {
+  if (!currentAudioTranscript) return '';
+  
   try {
-    // Create a temporary file
-    const tempDir = os.tmpdir();
-    const tempFile = path.join(tempDir, `temp_audio_${Date.now()}.wav`);
-    
-    // Write buffer to temporary file
-    fs.writeFileSync(tempFile, audioBuffer);
-    
     logAudio('Transcribing audio file', { fileSize: audioBuffer.length });
     
-    // Transcribe using OpenAI Whisper
-    const transcription = await openaiClient.audio.transcriptions.create({
-      file: fs.createReadStream(tempFile),
-      model: 'whisper-1',
-    });
-    
-    // Clean up temporary file
-    fs.unlinkSync(tempFile);
+    // Call the API server
+    const transcription = await apiServer.transcribeAudio(audioBuffer, mimeType);
     
     logAudio('Audio transcription completed', { 
-      textLength: transcription.text.length,
-      preview: transcription.text.substring(0, 100) + '...'
+      textLength: transcription.length,
+      preview: transcription.substring(0, 100) + '...'
     });
     
-    return transcription.text;
-    
+    return transcription;
   } catch (error) {
     logAudio('Error transcribing audio', error);
     return '';
@@ -515,33 +468,6 @@ async function addAudioToMemory(audioText: string): Promise<void> {
     });
   }
 }
-
-function getAudioContext(): string {
-  if (!currentAudioTranscript) return '';
-  return `\n\nAudio: ${currentAudioTranscript}`;
-}
-
-// Audio transcription IPC handlers
-ipcMain.handle('transcribe-audio', async (_event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, mimeType?: string): Promise<string> => {
-  try {
-    const buffer = Buffer.from(audioBuffer);
-    const transcription = await transcribeAudioFile(buffer, mimeType || 'audio/wav');
-    
-    // Add to memory if transcription is successful
-    if (transcription) {
-      await addAudioToMemory(transcription);
-    }
-    
-    return transcription;
-  } catch (error) {
-    logAudio('Error in transcribe-audio IPC handler', error);
-    return '';
-  }
-});
-
-ipcMain.handle('get-audio-transcript', async () => {
-  return currentAudioTranscript;
-});
 
 // Memory management functions
 if (isDebugMode) {
@@ -577,4 +503,8 @@ ipcMain.handle('resize-window', async (_event: IpcMainInvokeEvent, height: numbe
     const [width] = mainWindow.getSize();
     mainWindow.setSize(width, height);
   }
+});
+
+ipcMain.handle('get-audio-transcript', async () => {
+  return currentAudioTranscript;
 });
