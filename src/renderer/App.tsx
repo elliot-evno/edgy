@@ -94,6 +94,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
+      <div className="title-bar"></div>
       <div className="chat-container" ref={chatContainerRef}>
         {messages.map(message => (
           <div key={message.id} className={`message ${message.role}`}>

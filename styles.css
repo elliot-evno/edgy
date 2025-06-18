@@ -25,6 +25,16 @@ body {
     background-color: #1a0f1f;
 }
 
+.title-bar {
+    height: 30px;
+    background-color: #2d1b36;
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 1px solid #3d2447;
+}
+
 .chat-container {
     flex: 1;
     overflow-y: auto;
