@@ -116,11 +116,11 @@ body {
 
 .message-content {
     padding: 12px 16px;
-    border-radius: 12px;
     line-height: 1.5;
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
+    background: none !important;
 }
 
 .message.user .message-content {
@@ -149,12 +149,12 @@ body {
 
 .message-content p {
     margin-bottom: 8px;
+    background: none !important;
 }
 
 .message-content code {
     background-color: #2a1833;
     padding: 2px 6px;
-    border-radius: 4px;
     font-size: 0.9em;
     color: #c9a7d8;
 }
@@ -164,24 +164,31 @@ body {
     padding: 1em;
     overflow: auto;
     transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: none !important;
 }
 
-.message-content pre > div {
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
+/* Remove ALL backgrounds from syntax highlighting */
+.message-content pre *,
+.message-content pre span,
+.message-content pre div,
+.message-content pre code,
+.message-content .token {
+    background: none !important;
 }
 
 .message-content code {
     font-family: 'Fira Code', 'Consolas', monospace;
     transition: all 0.3s ease;
+    background: none !important;
 }
 
 /* Ensure code block text remains readable */
 .message-content pre code {
     color: #d4d4d4 !important;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+    padding-right: 32px; /* Make space for copy button */
+    background: none !important;
 }
 
 /* Adjust token colors for better visibility on transparent background */
@@ -210,21 +217,24 @@ body {
     color: #d4d4d4 !important;
 }
 
-/* Add subtle hover effect */
+/* Remove hover background effect */
 .message-content pre:hover {
-    background: rgba(30, 30, 30, 0.75) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: none;
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: none !important;
 }
 
 .message-content ul,
 .message-content ol {
     margin-left: 20px;
     margin-bottom: 8px;
+    background: none !important;
 }
 
 .message-content li {
     margin-bottom: 4px;
+    background: none !important;
 }
 
 .message-content a {
@@ -241,11 +251,25 @@ body {
     padding-left: 12px;
     margin: 8px 0;
     color: #b5a3c0;
+    background: none !important;
+}
+
+/* Ensure ReactMarkdown container is transparent */
+.message-content > div,
+.message-content > div > *,
+.message-content > * {
+    background: none !important;
+}
+
+/* Override any potential theme backgrounds */
+[class*="language-"],
+[class*="language-"] * {
+    background: none !important;
 }
 
 .input-container {
     padding: 20px;
-    background-color: rgba(0, 0, 0, 0.4);
+    background: none !important;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
@@ -356,4 +380,42 @@ body {
 .chat-section.expanded {
     flex: 1;
     opacity: 1;
+}
+
+.code-block-wrapper {
+    position: relative;
+    background: none !important;
+}
+
+/* Copy button styling */
+.copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 2;
+}
+
+.copy-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+}
+
+.copy-button:active {
+    transform: translateY(0px);
+}
+
+/* Inline code styling */
+.message-content :not(pre) > code {
+    padding: 2px 6px;
+    background: none !important;
 }

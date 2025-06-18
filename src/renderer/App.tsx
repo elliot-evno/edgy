@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useAudioRecording } from './hooks/useAudioRecording';
+import { Copy, Check } from 'lucide-react';
 import './App.css';
 import { RefreshCw } from 'lucide-react';
 
@@ -11,21 +12,45 @@ const transparentTheme = {
   ...vscDarkPlus,
   'pre[class*="language-"]': {
     ...vscDarkPlus['pre[class*="language-"]'],
-    background: 'rgba(30, 30, 30, 0.6)',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '6px',
+    background: 'none',
+    margin: 0,
+    padding: 0,
   },
   'code[class*="language-"]': {
     ...vscDarkPlus['code[class*="language-"]'],
-    background: 'transparent',
+    background: 'none',
     textShadow: 'none',
-  }
+  },
+  'pre[class*="language-"]::selection': {
+    background: 'rgba(255, 255, 255, 0.1)',
+  },
+  'pre[class*="language-"] ::selection': {
+    background: 'rgba(255, 255, 255, 0.1)',
+  },
+  'code[class*="language-"]::selection': {
+    background: 'rgba(255, 255, 255, 0.1)',
+  },
+  'code[class*="language-"] ::selection': {
+    background: 'rgba(255, 255, 255, 0.1)',
+  },
+  // Override all token backgrounds
+  'token': {
+    background: 'none !important',
+  },
+  'token.comment': { color: '#6A9955' },
+  'token.string': { color: '#CE9178' },
+  'token.keyword': { color: '#569CD6' },
+  'token.function': { color: '#DCDCAA' },
+  'token.number': { color: '#B5CEA8' },
+  'token.operator': { color: '#D4D4D4' },
+  'token.class-name': { color: '#4EC9B0' },
+  'token.variable': { color: '#9CDCFE' },
+  'token.property': { color: '#9CDCFE' },
+  'token.punctuation': { color: '#D4D4D4' },
 };
 
 // Custom inline code style
 const inlineCodeStyle = {
-  backgroundColor: 'rgba(30, 30, 30, 0.6)',
   backdropFilter: 'blur(10px)',
   border: '1px solid rgba(255, 255, 255, 0.1)',
   borderRadius: '4px',
@@ -38,6 +63,55 @@ interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
+
+const CodeBlock = ({ language, value }: { language: string; value: string }) => {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      
+      // Reset copied state after 2 seconds
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="code-block-wrapper">
+      <button 
+        className="copy-button"
+        onClick={handleCopy}
+        title={copied ? "Copied!" : "Copy code"}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      <SyntaxHighlighter
+        style={transparentTheme as any}
+        language={language || 'text'}
+        PreTag="div"
+      >
+        {value}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -274,15 +348,13 @@ const App: React.FC = () => {
                     components={{
                       code({ node, inline, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
+                        const code = String(children).replace(/\n$/, '');
+                        
                         return !inline ? (
-                          <SyntaxHighlighter
-                            style={transparentTheme as any}
+                          <CodeBlock
                             language={match ? match[1] : 'text'}
-                            PreTag="div"
-                            {...props}
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
+                            value={code}
+                          />
                         ) : (
                           <code
                             style={inlineCodeStyle}
