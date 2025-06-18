@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, IpcMainInvokeEvent, globalShortcut } from 'electron';
 import * as dotenv from 'dotenv';
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import * as Tesseract from 'tesseract.js';
@@ -19,6 +19,7 @@ let memoryInterval: NodeJS.Timeout | null = null;
 // Debug mode
 const isDebugMode = process.argv.includes('--debug') || process.env.DEBUG_MODE === 'true';
 const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
+let ignoreMouseEvents = process.argv.includes('--ignore-mouse-events') || process.env.IGNORE_MOUSE_EVENTS === 'true';
 
 // Memory management
 interface MemoryEntry {
@@ -57,9 +58,10 @@ function createWindow(): void {
     height: windowHeight,
     x: x,
     y: y,
-    frame: true,
+    frame: false,
     resizable: true,
     alwaysOnTop: true,
+    skipTaskbar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -74,6 +76,12 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist-react/index.html'));
   }
+  if (ignoreMouseEvents === true) {
+    mainWindow.setIgnoreMouseEvents(true);
+  } else {
+    mainWindow.setIgnoreMouseEvents(false);
+  }
+
   
   // Handle permissions for screen capture
   mainWindow.webContents.session.setPermissionRequestHandler((_, permission, callback) => {
@@ -120,9 +128,25 @@ function initializeAI(): void {
 app.whenReady().then(() => {
   createWindow();
   initializeAI();
+  
+  // Register global shortcut for Cmd+G to toggle mouse events
+  globalShortcut.register('CommandOrControl+G', () => {
+    if (mainWindow) {
+      ignoreMouseEvents = !ignoreMouseEvents;
+      mainWindow.setIgnoreMouseEvents(ignoreMouseEvents);
+      console.log(`Mouse events ${ignoreMouseEvents ? 'ignored' : 'enabled'}`);
+      
+      // Send status to renderer if in debug mode
+      if (isDebugMode) {
+        mainWindow.webContents.send('mouse-events-toggled', ignoreMouseEvents);
+      }
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') app.quit();
 });
 
