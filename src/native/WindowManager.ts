@@ -6,6 +6,10 @@ export class WindowManager {
   private isDebugMode: boolean;
   private isDev: boolean;
   private ignoreMouseEvents: boolean;
+  private isVisible: boolean = true;
+  private isCollapsed: boolean = false;
+  private readonly HEADER_HEIGHT = 30;
+  private readonly EXPANDED_HEIGHT = 600;
 
   constructor(options: {
     isDebugMode: boolean;
@@ -120,13 +124,54 @@ export class WindowManager {
   }
 
   resize(height: number): void {
-    if (this.mainWindow) {
-      const [width] = this.mainWindow.getSize();
-      this.mainWindow.setSize(width, height);
-    }
+    if (!this.mainWindow) return;
+    console.log('WindowManager: Resizing window to height:', height);
+    const [width] = this.mainWindow.getSize();
+    this.mainWindow.setSize(width, height);
+    console.log('WindowManager: New window size:', this.mainWindow.getSize());
   }
 
   cleanup(): void {
     this.mainWindow = null;
+  }
+
+  toggleVisibility(): void {
+    if (!this.mainWindow) return;
+    
+    this.isVisible = !this.isVisible;
+    if (this.isVisible) {
+      this.mainWindow.show();
+      // Restore previous mouse event state
+      this.mainWindow.setIgnoreMouseEvents(this.ignoreMouseEvents);
+    } else {
+      this.mainWindow.hide();
+      // When invisible, always make it non-interactive
+      this.mainWindow.setIgnoreMouseEvents(true);
+    }
+  }
+
+  setClickThrough(ignore: boolean): void {
+    if (!this.mainWindow) return;
+    this.ignoreMouseEvents = ignore;
+    this.mainWindow.setIgnoreMouseEvents(ignore);
+  }
+
+  focusInput(): void {
+    if (!this.mainWindow) return;
+    this.mainWindow.webContents.send('focus-input');
+  }
+
+  toggleCollapse(): void {
+    if (!this.mainWindow) return;
+    
+    this.isCollapsed = !this.isCollapsed;
+    console.log('WindowManager: Toggling collapse state:', { isCollapsed: this.isCollapsed });
+    
+    // Set new height based on collapsed state
+    const newHeight = this.isCollapsed ? this.HEADER_HEIGHT : this.EXPANDED_HEIGHT;
+    this.resize(newHeight);
+    
+    // Notify renderer
+    this.mainWindow.webContents.send('toggle-collapse');
   }
 } 

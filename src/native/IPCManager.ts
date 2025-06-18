@@ -125,6 +125,23 @@ export class IPCManager {
       this.windowManager.resize(height);
     });
 
+    // Window control handlers
+    ipcMain.handle('toggle-visibility', () => {
+      this.windowManager.toggleVisibility();
+    });
+
+    ipcMain.handle('set-click-through', (_event: IpcMainInvokeEvent, ignore: boolean) => {
+      this.windowManager.setClickThrough(ignore);
+    });
+
+    ipcMain.handle('focus-input', () => {
+      this.windowManager.focusInput();
+    });
+
+    ipcMain.handle('toggle-collapse', () => {
+      this.windowManager.toggleCollapse();
+    });
+
     // Debug handlers
     if (this.isDebugMode) {
       ipcMain.handle('start-memory-capture', () => {

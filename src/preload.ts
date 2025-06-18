@@ -9,7 +9,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Listen for events with proper callback handling
   on: (channel: string, callback: (...args: any[]) => void) => {
-    const validChannels = ['gemini-stream', 'mouse-events-toggled', 'set-debug-mode', 'memory-updated', 'audio-transcript-updated'];
+    const validChannels = [
+      'gemini-stream',
+      'mouse-events-toggled',
+      'set-debug-mode',
+      'memory-updated',
+      'audio-transcript-updated',
+      'focus-input',
+      'toggle-collapse'
+    ];
     if (validChannels.includes(channel)) {
       // Wrap the callback to prevent leaking ipcRenderer
       const subscription = (_event: any, ...args: any[]) => callback(...args);

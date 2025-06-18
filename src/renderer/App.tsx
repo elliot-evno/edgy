@@ -18,10 +18,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const activeStreamRef = useRef<string | null>(null);
-  const currentMessageRef = useRef<string>('');
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+ 
   const HEADER_HEIGHT = 30;
   const EXPANDED_HEIGHT = 600; // Default window height
   
@@ -35,7 +34,7 @@ const App: React.FC = () => {
     initializeApp();
     
     // Set up Gemini streaming listener
-    const cleanup = (window as any).electronAPI.on('gemini-stream', (data: { streamId: string; text: string; done: boolean; error?: boolean }) => {
+    const cleanupGemini = (window as any).electronAPI.on('gemini-stream', (data: { streamId: string; text: string; done: boolean; error?: boolean }) => {
       // Only process if this is the active stream
       if (activeStreamRef.current === data.streamId) {
         setMessages(prev => {
@@ -62,9 +61,25 @@ const App: React.FC = () => {
         }
       }
     });
+
+    // Set up keyboard shortcut listeners
+    const cleanupFocusInput = (window as any).electronAPI.on('focus-input', () => {
+      console.log('Focus input event received');
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    });
+
+    const cleanupToggleCollapse = (window as any).electronAPI.on('toggle-collapse', () => {
+      console.log('Toggle collapse event received');
+      // Just update the UI state, window size is handled by main process
+      setIsExpanded(prev => !prev);
+    });
     
     return () => {
-      if (cleanup) cleanup();
+      if (cleanupGemini) cleanupGemini();
+      if (cleanupFocusInput) cleanupFocusInput();
+      if (cleanupToggleCollapse) cleanupToggleCollapse();
     };
   }, []);
 
@@ -96,11 +111,19 @@ const App: React.FC = () => {
 
   const toggleChat = async () => {
     const newIsExpanded = !isExpanded;
+    console.log('Toggling chat from UI:', { newIsExpanded });
     setIsExpanded(newIsExpanded);
     
-    // Resize the window
+    // Only resize when toggled from UI
     const newHeight = newIsExpanded ? EXPANDED_HEIGHT : HEADER_HEIGHT;
-    await (window as any).electronAPI.resizeWindow(newHeight);
+    try {
+      await (window as any).electronAPI.resizeWindow(newHeight);
+      console.log('Window resized successfully to:', newHeight);
+    } catch (error) {
+      console.error('Error resizing window:', error);
+      // Revert state if resize fails
+      setIsExpanded(!newIsExpanded);
+    }
   };
 
   const clearHistory = () => {
@@ -157,15 +180,15 @@ const App: React.FC = () => {
   return (
     <div className="app-container">
       <div className="title-bar">
-      <div style={{ marginRight: 'auto' }}>
-        <button 
+        <div style={{ marginRight: 'auto' }}>
+          <button 
             className="toggle-button"
             onClick={toggleChat}
             title={isExpanded ? "Collapse" : "Expand"}
           >
             {isExpanded ? '▼' : '▲'}
           </button>
-          </div>
+        </div>
 
         <button 
           className="clear-button"
@@ -174,8 +197,6 @@ const App: React.FC = () => {
         >
           <RefreshCw size={16} />
         </button>
-
-     
       </div>
       <div className={`chat-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
         <div className="chat-container" ref={chatContainerRef}>
@@ -225,6 +246,7 @@ const App: React.FC = () => {
         <div className="input-container">
           <form onSubmit={handleSubmit} className="input-wrapper">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

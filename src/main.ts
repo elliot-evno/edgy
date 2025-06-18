@@ -39,9 +39,24 @@ function initializeApp(): void {
   // Create the main window
   windowManager.createWindow();
   
-  // Register global shortcut for Cmd+G to toggle mouse events
+  // Register global shortcuts
   globalShortcut.register('CommandOrControl+G', () => {
     windowManager.toggleMouseEvents();
+  });
+
+  // Focus input shortcut (Cmd + I)
+  globalShortcut.register('CommandOrControl+I', () => {
+    windowManager.focusInput();
+  });
+
+  // Toggle collapse shortcut (Cmd + Shift + C)
+  globalShortcut.register('CommandOrControl+Shift+C', () => {
+    windowManager.toggleCollapse();
+  });
+
+  // Toggle visibility shortcut (Cmd + K)
+  globalShortcut.register('CommandOrControl+K', () => {
+    windowManager.toggleVisibility();
   });
 }
 
