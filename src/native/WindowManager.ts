@@ -80,7 +80,7 @@ export class WindowManager {
     if (this.isDev) {
       this.mainWindow.loadURL('http://localhost:3000');
     } else {
-      this.mainWindow.loadFile(path.join(__dirname, '../../dist-react/index.html'));
+      this.mainWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'));
     }
 
     if (this.ignoreMouseEvents) {
