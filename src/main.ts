@@ -59,7 +59,7 @@ function createWindow(): void {
     y: y,
     frame: true,
     resizable: true,
-    alwaysOnTop: false,
+    alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
