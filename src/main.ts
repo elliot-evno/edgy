@@ -31,9 +31,25 @@ function logMemory(message: string, data?: any) {
 }
 
 function createWindow(): void {
+  // Get the primary display's dimensions
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+  
+  // Calculate position for top-right corner
+  const windowWidth = 400;
+  const windowHeight = 600;
+  const x = width - windowWidth - 20; // 20px padding from the right
+  const y = 40; // 40px from top
+
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
+    width: windowWidth,
+    height: windowHeight,
+    x: x,
+    y: y,
+    frame: true,
+    resizable: true,
+    alwaysOnTop: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -67,7 +83,8 @@ function createWindow(): void {
     startMemoryCapture();
   });
   
-  if (isDev || isDebugMode) {
+  // Only open DevTools in debug mode
+  if (isDebugMode) {
     mainWindow.webContents.openDevTools();
   }
 }
