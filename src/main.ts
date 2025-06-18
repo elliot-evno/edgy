@@ -63,7 +63,7 @@ function initializeApp(): void {
 app.whenReady().then(() => {
   // Hide dock icon on macOS
   if (process.platform === 'darwin') {
-    app.dock.hide();
+    app.dock?.hide();
   }
   
   initializeApp();
