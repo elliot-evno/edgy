@@ -30,8 +30,8 @@ export class WindowManager {
     
     const windowWidth = this.DEFAULT_WIDTH;
     const windowHeight = this.EXPANDED_HEIGHT;
-    const x = width - windowWidth - 20;
-    const y = 40;
+    const x = 20; // Positioned 20px from left edge
+    const y = 40; // Positioned 40px from top edge
 
     this.mainWindow = new BrowserWindow({
       width: windowWidth,
