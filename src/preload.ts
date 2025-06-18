@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Window management
   resizeWindow: (height: number) => ipcRenderer.invoke('resize-window', height),
+  expandWindowForCode: () => ipcRenderer.invoke('expand-window-for-code'),
+  resetWindowWidth: () => ipcRenderer.invoke('reset-window-width'),
   
   // Listen for events with proper callback handling
   on: (channel: string, callback: (...args: any[]) => void) => {

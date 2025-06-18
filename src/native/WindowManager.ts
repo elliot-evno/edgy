@@ -10,6 +10,9 @@ export class WindowManager {
   private isCollapsed: boolean = false;
   private readonly HEADER_HEIGHT = 30;
   private readonly EXPANDED_HEIGHT = 600;
+  private readonly DEFAULT_WIDTH = 400;
+  private readonly CODE_BLOCK_WIDTH = 800;
+  private isWidthExpanded: boolean = false;
 
   constructor(options: {
     isDebugMode: boolean;
@@ -25,8 +28,8 @@ export class WindowManager {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
     
-    const windowWidth = 400;
-    const windowHeight = 600;
+    const windowWidth = this.DEFAULT_WIDTH;
+    const windowHeight = this.EXPANDED_HEIGHT;
     const x = width - windowWidth - 20;
     const y = 40;
 
@@ -196,5 +199,30 @@ export class WindowManager {
         resolve();
       });
     });
+  }
+
+  setWidth(width: number): void {
+    if (!this.mainWindow) return;
+    console.log('WindowManager: Setting window width:', width);
+    const [, height] = this.mainWindow.getSize();
+    this.mainWindow.setSize(width, height);
+    
+    // Keep the window right-aligned
+    const [x, y] = this.mainWindow.getPosition();
+    const display = screen.getDisplayNearestPoint({ x, y });
+    const newX = display.workArea.x + display.workArea.width - width - 20;
+    this.mainWindow.setPosition(newX, y);
+  }
+
+  expandForCode(): void {
+    if (!this.mainWindow || this.isWidthExpanded) return;
+    this.isWidthExpanded = true;
+    this.setWidth(this.CODE_BLOCK_WIDTH);
+  }
+
+  resetWidth(): void {
+    if (!this.mainWindow || !this.isWidthExpanded) return;
+    this.isWidthExpanded = false;
+    this.setWidth(this.DEFAULT_WIDTH);
   }
 } 

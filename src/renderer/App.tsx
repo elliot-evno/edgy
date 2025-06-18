@@ -184,6 +184,38 @@ const App: React.FC = () => {
     };
   }, [stopContinuousRecording]);
 
+  // Function to check if message contains code blocks
+  const hasCodeBlock = (content: string): boolean => {
+    // Check for fenced code blocks (```code```)
+    const fencedCodeBlock = /```[\s\S]+?```/;
+    // Check for indented code blocks (4 spaces or tab)
+    const indentedCodeBlock = /^( {4}|\t).+$/m;
+    // Check for inline code blocks (`code`)
+    const inlineCodeBlocks = /`[^`]+`/g;
+    
+    if (fencedCodeBlock.test(content)) return true;
+    if (indentedCodeBlock.test(content)) return true;
+    
+    // Only count multiple inline code blocks as needing expansion
+    const inlineMatches = content.match(inlineCodeBlocks);
+    return inlineMatches ? inlineMatches.length > 2 : false;
+  };
+
+  // Effect to handle window width based on code blocks
+  useEffect(() => {
+    if (messages.length === 0) {
+      (window as any).electronAPI.resetWindowWidth();
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role === 'assistant' && hasCodeBlock(lastMessage.content)) {
+      (window as any).electronAPI.expandWindowForCode();
+    } else if (!messages.some(msg => msg.role === 'assistant' && hasCodeBlock(msg.content))) {
+      (window as any).electronAPI.resetWindowWidth();
+    }
+  }, [messages]);
+
   return (
     <div className="app-container">
       <div className="title-bar">

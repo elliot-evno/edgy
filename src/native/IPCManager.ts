@@ -137,6 +137,14 @@ export class IPCManager {
       this.windowManager.resize(height);
     });
 
+    ipcMain.handle('expand-window-for-code', () => {
+      this.windowManager.expandForCode();
+    });
+
+    ipcMain.handle('reset-window-width', () => {
+      this.windowManager.resetWidth();
+    });
+
     // Window control handlers
     ipcMain.handle('toggle-visibility', () => {
       this.windowManager.toggleVisibility();
