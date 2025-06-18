@@ -18,6 +18,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const activeStreamRef = useRef<string | null>(null);
+  const currentMessageRef = useRef<string>('');
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const HEADER_HEIGHT = 30;
   const EXPANDED_HEIGHT = 600; // Default window height
@@ -30,6 +33,39 @@ const App: React.FC = () => {
 
   useEffect(() => {
     initializeApp();
+    
+    // Set up Gemini streaming listener
+    const cleanup = (window as any).electronAPI.on('gemini-stream', (data: { streamId: string; text: string; done: boolean; error?: boolean }) => {
+      // Only process if this is the active stream
+      if (activeStreamRef.current === data.streamId) {
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage && lastMessage.role === 'assistant') {
+            lastMessage.content = data.text;
+            return [...newMessages];
+          }
+          return prev;
+        });
+
+        // Auto-scroll to the latest message
+        requestAnimationFrame(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        });
+
+        // Clear active stream when done
+        if (data.done) {
+          activeStreamRef.current = null;
+          setIsLoading(false);
+        }
+      }
+    });
+    
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, []);
 
   useEffect(() => {
@@ -81,32 +117,39 @@ const App: React.FC = () => {
       role: 'user',
       content: input.trim()
     };
+    
+    const messageId = (Date.now() + 1).toString();
+    activeStreamRef.current = messageId;
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
-      const response = await (window as any).electronAPI.chatGemini({
-        message: input.trim()
-      });
-      
+      // Add an empty assistant message that will be updated via streaming
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: messageId,
         role: 'assistant',
-        content: response
+        content: ''
       };
-      
       setMessages(prev => [...prev, assistantMessage]);
+
+      await (window as any).electronAPI.chatGemini({
+        message: userMessage.content,
+        messageId: messageId
+      });
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.'
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
+      activeStreamRef.current = null;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          lastMessage.content = 'Sorry, I encountered an error. Please try again.';
+          return [...newMessages];
+        }
+        return prev;
+      });
       setIsLoading(false);
     }
   };

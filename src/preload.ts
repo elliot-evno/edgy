@@ -7,12 +7,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window management
   resizeWindow: (height: number) => ipcRenderer.invoke('resize-window', height),
   
-  // Listen for events
+  // Listen for events with proper callback handling
   on: (channel: string, callback: (...args: any[]) => void) => {
-    ipcRenderer.on(channel, callback);
+    const validChannels = ['gemini-stream', 'mouse-events-toggled', 'set-debug-mode', 'memory-updated', 'audio-transcript-updated'];
+    if (validChannels.includes(channel)) {
+      // Wrap the callback to prevent leaking ipcRenderer
+      const subscription = (_event: any, ...args: any[]) => callback(...args);
+      ipcRenderer.on(channel, subscription);
+      
+      // Return a cleanup function
+      return () => {
+        ipcRenderer.removeListener(channel, subscription);
+      };
+    }
   },
   
-  // Remove listeners
+  // Remove all listeners for a channel
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
   },
@@ -21,8 +31,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureScreen: () => ipcRenderer.invoke('capture-screen'),
   extractText: (imageDataURL: string) => ipcRenderer.invoke('extract-text', imageDataURL),
   
-  // Chat
-  chatGemini: (args: any) => ipcRenderer.invoke('chat-gemini', args),
+  // Chat with streaming support
+  chatGemini: async (args: any) => {
+    // Use invoke for the initial request and let the main process handle streaming
+    return ipcRenderer.invoke('chat-gemini', args);
+  },
   
   // Audio transcription
   transcribeAudio: (audioBuffer: ArrayBuffer, mimeType?: string) => ipcRenderer.invoke('transcribe-audio', audioBuffer, mimeType),

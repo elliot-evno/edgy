@@ -205,16 +205,17 @@ interface ChatGeminiArgs {
   message: string;
   screenText?: string;
   imageDataURL?: string;
+  messageId?: string;
 }
 
-ipcMain.handle('chat-gemini', async (
-  _event: IpcMainInvokeEvent,
-  { message, screenText, imageDataURL }: ChatGeminiArgs
-): Promise<string> => {
+ipcMain.handle('chat-gemini', async (_event: IpcMainInvokeEvent, { message, screenText, imageDataURL, messageId }: ChatGeminiArgs): Promise<string> => {
   try {
     if (!geminiModel) {
       return 'Error: Gemini API not initialized. Please check your API key in .env file.';
     }
+    
+    // Generate a unique message ID if not provided
+    const streamId = messageId || Date.now().toString();
     
     // Technical interview assistant system prompt
     const systemPrompt = `You are a concise technical interview assistant. You can see the screen and hear audio. Provide direct, short answers. Never say "the user wants" or similar phrases. Help with:
@@ -252,7 +253,6 @@ Be brief and actionable.`;
       const base64Data = imageDataURL.split(',')[1];
       const mimeType = imageDataURL.split(';')[0].split(':')[1];
       
-      // Check if it's a video or image
       if (mimeType.startsWith('video/')) {
         parts.push({
           inlineData: {
@@ -270,9 +270,46 @@ Be brief and actionable.`;
         });
       }
     }
+
+    const result = await geminiModel.generateContentStream(parts);
+    let fullResponse = '';
     
-    const result: GenerateContentResult = await geminiModel.generateContent(parts);
-    return result.response.text();
+    try {
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        fullResponse += text;
+        
+        // Send streaming update to the specific renderer
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('gemini-stream', {
+            streamId,
+            text: fullResponse,
+            done: false
+          });
+        }
+      }
+      
+      // Send final message indicating stream is complete
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('gemini-stream', {
+          streamId,
+          text: fullResponse,
+          done: true
+        });
+      }
+    } catch (error) {
+      console.error('Error in stream:', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('gemini-stream', {
+          streamId,
+          text: 'Error: Failed to stream response.',
+          done: true,
+          error: true
+        });
+      }
+    }
+    
+    return fullResponse;
   } catch (error: any) {
     console.error('Error with Gemini:', error);
     return `Error: ${error.message}`;
