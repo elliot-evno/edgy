@@ -18,11 +18,9 @@ const isDebugMode = process.argv.includes('--debug') || process.env.DEBUG_MODE =
 interface MemoryEntry {
   timestamp: number;
   content: string;
-  importance: number; // 1-10 scale
 }
 
-let memoryEntries: MemoryEntry[] = [];
-const MAX_MEMORY_ENTRIES = 50;
+let currentMemory: string = '';
 const MEMORY_CAPTURE_INTERVAL = 5000; // 5 seconds
 
 function logMemory(message: string, data?: any) {
@@ -244,7 +242,7 @@ function startMemoryCapture(): void {
         await addToMemory(text.trim());
         logMemory('Screen content captured and processed', { 
           textLength: text.length,
-          totalEntries: memoryEntries.length 
+          totalEntries: currentMemory.length 
         });
       }
     } catch (error) {
@@ -263,158 +261,56 @@ function stopMemoryCapture(): void {
 
 async function addToMemory(content: string): Promise<void> {
   try {
-    // Check if this content is significantly different from recent entries
-    const recentEntries = memoryEntries.slice(-5);
-    const isDuplicate = recentEntries.some(entry => 
-      calculateSimilarity(entry.content, content) > 0.8
-    );
-    
-    if (isDuplicate) {
-      logMemory('Skipping duplicate content');
+    if (!geminiModel) {
+      // Fallback: just replace the memory
+      currentMemory = content;
+      logMemory('Updated memory (no AI available)', { 
+        contentPreview: content.substring(0, 50) + '...',
+        memoryLength: currentMemory.length 
+      });
       return;
     }
+
+    // Use AI to update memory based on old memory + new content
+    const prompt = `You are maintaining a memory of what's happening on the user's screen. 
+
+Current memory: "${currentMemory || 'No previous memory'}"
+
+New screen content: "${content}"
+
+Please update the memory to incorporate the new information. Keep it concise but comprehensive. Focus on:
+- Important changes or new information
+- Current state and context
+- Remove outdated information
+- Maintain continuity
+
+Respond with just the updated memory content (no explanations):`;
+
+    const result = await geminiModel.generateContent(prompt);
+    const updatedMemory = result.response.text().trim();
     
-    // Assess importance using AI
-    const importance = await assessContentImportance(content);
+    currentMemory = updatedMemory;
     
-    const entry: MemoryEntry = {
-      timestamp: Date.now(),
-      content,
-      importance
-    };
-    
-    memoryEntries.push(entry);
-    logMemory('Added new memory entry', { 
-      importance, 
-      contentPreview: content.substring(0, 50) + '...',
-      totalEntries: memoryEntries.length 
+    logMemory('Memory updated by AI', { 
+      newContentPreview: content.substring(0, 50) + '...',
+      updatedMemoryPreview: updatedMemory.substring(0, 100) + '...',
+      memoryLength: currentMemory.length 
     });
-    
-    // Manage memory size
-    if (memoryEntries.length > MAX_MEMORY_ENTRIES) {
-      logMemory('Memory limit reached, consolidating');
-      await consolidateMemory();
-    }
     
     // Notify frontend if in debug mode
     if (mainWindow && isDebugMode) {
-      mainWindow.webContents.send('memory-updated', entry);
+      mainWindow.webContents.send('memory-updated', { timestamp: Date.now(), content: updatedMemory });
     }
   } catch (error) {
-    logMemory('Error adding to memory', error);
+    logMemory('Error updating memory with AI, using simple replacement', error);
+    // Fallback: just replace the memory
+    currentMemory = content;
   }
-}
-
-async function assessContentImportance(content: string): Promise<number> {
-  if (!geminiModel) return 5; // Default importance
-  
-  try {
-    const prompt = `Rate the importance of this screen content from 1-10 (where 10 is most important):
-    
-Content: "${content}"
-
-Consider:
-- Is this actionable information?
-- Does it contain important data, errors, or notifications?
-- Is it repetitive/common UI elements?
-- Does it represent a significant change in context?
-
-Respond with only a number from 1-10.`;
-
-    const result = await geminiModel.generateContent(prompt);
-    const response = result.response.text().trim();
-    const importance = parseInt(response);
-    
-    return isNaN(importance) ? 5 : Math.max(1, Math.min(10, importance));
-  } catch (error) {
-    console.error('Error assessing importance:', error);
-    return 5;
-  }
-}
-
-async function consolidateMemory(): Promise<void> {
-  if (!geminiModel) {
-    logMemory('No Gemini model available, using simple consolidation');
-    // Simple fallback: remove oldest low-importance entries
-    const originalCount = memoryEntries.length;
-    memoryEntries = memoryEntries
-      .sort((a, b) => b.importance - a.importance || b.timestamp - a.timestamp)
-      .slice(0, MAX_MEMORY_ENTRIES);
-    logMemory('Simple consolidation completed', { 
-      before: originalCount, 
-      after: memoryEntries.length 
-    });
-    return;
-  }
-  
-  try {
-    logMemory('Starting AI-powered memory consolidation');
-    
-    // Get all memory content
-    const memoryContent = memoryEntries.map(entry => 
-      `[${new Date(entry.timestamp).toLocaleTimeString()}] (Importance: ${entry.importance}) ${entry.content}`
-    ).join('\n\n');
-    
-    const prompt = `Please consolidate and summarize this screen memory, keeping only the most important and relevant information. Remove duplicate, repetitive, or low-value content. Maintain chronological context where important.
-
-Memory entries:
-${memoryContent}
-
-Provide a consolidated summary that captures the essential information, significant changes, and important events. Focus on actionable items, errors, important data, and context changes.`;
-
-    const result = await geminiModel.generateContent(prompt);
-    const consolidatedContent = result.response.text();
-    
-    const originalCount = memoryEntries.length;
-    
-    // Replace all entries with a single consolidated entry
-    memoryEntries = [{
-      timestamp: Date.now(),
-      content: consolidatedContent,
-      importance: 8 // High importance for consolidated memory
-    }];
-    
-    logMemory('AI consolidation completed successfully', { 
-      before: originalCount, 
-      after: memoryEntries.length,
-      consolidatedLength: consolidatedContent.length 
-    });
-  } catch (error) {
-    logMemory('Error in AI consolidation, falling back to simple method', error);
-    // Fallback to simple removal
-    const originalCount = memoryEntries.length;
-    memoryEntries = memoryEntries
-      .sort((a, b) => b.importance - a.importance || b.timestamp - a.timestamp)
-      .slice(0, Math.floor(MAX_MEMORY_ENTRIES / 2));
-    logMemory('Fallback consolidation completed', { 
-      before: originalCount, 
-      after: memoryEntries.length 
-    });
-  }
-}
-
-function calculateSimilarity(text1: string, text2: string): number {
-  // Simple similarity calculation using word overlap
-  const words1 = new Set(text1.toLowerCase().split(/\s+/));
-  const words2 = new Set(text2.toLowerCase().split(/\s+/));
-  
-  const intersection = new Set([...words1].filter(x => words2.has(x)));
-  const union = new Set([...words1, ...words2]);
-  
-  return intersection.size / union.size;
 }
 
 function getMemoryContext(): string {
-  if (memoryEntries.length === 0) return '';
-  
-  // Get recent high-importance entries
-  const recentEntries = memoryEntries
-    .filter(entry => entry.importance >= 6 || entry.timestamp > Date.now() - 300000) // High importance or last 5 minutes
-    .slice(-10) // Last 10 entries
-    .map(entry => `[${new Date(entry.timestamp).toLocaleTimeString()}] ${entry.content}`)
-    .join('\n');
-  
-  return recentEntries ? `\n\nRecent screen context:\n${recentEntries}` : '';
+  if (!currentMemory) return '';
+  return `\n\nCurrent screen memory:\n${currentMemory}`;
 }
 
 // Memory management IPC handlers (only available in debug mode)
@@ -430,19 +326,13 @@ if (isDebugMode) {
   });
 
   ipcMain.handle('get-memory-entries', async () => {
-    return memoryEntries.slice(-20); // Return last 20 entries
+    return currentMemory;
   });
 
   ipcMain.handle('clear-memory', async () => {
     logMemory('Memory cleared via debug interface');
-    memoryEntries = [];
+    currentMemory = '';
     return 'Memory cleared';
-  });
-
-  ipcMain.handle('consolidate-memory', async () => {
-    logMemory('Manual consolidation triggered via debug interface');
-    await consolidateMemory();
-    return 'Memory consolidated';
   });
 }
 

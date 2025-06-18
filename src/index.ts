@@ -6,7 +6,6 @@ interface RecordedChunk {
 interface MemoryEntry {
     timestamp: number;
     content: string;
-    importance: number;
 }
 
 // Main state
@@ -75,7 +74,6 @@ function setupDebugControls() {
     // Memory event listeners
     startMemoryBtn?.addEventListener('click', startMemoryCapture);
     stopMemoryBtn?.addEventListener('click', stopMemoryCapture);
-    consolidateBtn?.addEventListener('click', consolidateMemory);
     clearMemoryBtn?.addEventListener('click', clearMemory);
     
     // Recording event listeners
@@ -136,18 +134,6 @@ async function stopMemoryCapture() {
     }
 }
 
-async function consolidateMemory() {
-    if (!isDebugMode) return;
-    try {
-        await (window as any).electronAPI.consolidateMemory();
-        addMessage('🗜️ Memory consolidated successfully', 'system');
-        await updateMemoryDisplay();
-    } catch (error) {
-        console.error('Error consolidating memory:', error);
-        addMessage('❌ Failed to consolidate memory', 'system');
-    }
-}
-
 async function clearMemory() {
     if (!isDebugMode) return;
     try {
@@ -163,24 +149,23 @@ async function updateMemoryDisplay() {
     if (!isDebugMode) return;
     
     try {
-        const entries: MemoryEntry[] = await (window as any).electronAPI.getMemoryEntries();
+        const memoryContent = await (window as any).electronAPI.getMemoryEntries();
         
         if (memoryCount) {
-            memoryCount.textContent = `Entries: ${entries.length}`;
+            memoryCount.textContent = `Memory size: ${memoryContent.length} chars`;
         }
         
         if (memoryEntries) {
             memoryEntries.innerHTML = '';
-            entries.slice(-5).forEach(entry => {
+            if (memoryContent) {
                 const entryDiv = document.createElement('div');
                 entryDiv.className = 'memory-entry';
                 entryDiv.innerHTML = `
-                    <div class="memory-time">${new Date(entry.timestamp).toLocaleTimeString()}</div>
-                    <div class="memory-importance">Importance: ${entry.importance}/10</div>
-                    <div class="memory-content">${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}</div>
+                    <div class="memory-time">${new Date().toLocaleTimeString()}</div>
+                    <div class="memory-content">${memoryContent.substring(0, 500)}${memoryContent.length > 500 ? '...' : ''}</div>
                 `;
                 memoryEntries.appendChild(entryDiv);
-            });
+            }
         }
     } catch (error) {
         console.error('Error updating memory display:', error);
@@ -253,7 +238,6 @@ setInterval(updateMemoryDisplay, 10000); // Update every 10 seconds
 // Memory event listeners
 startMemoryBtn?.addEventListener('click', startMemoryCapture);
 stopMemoryBtn?.addEventListener('click', stopMemoryCapture);
-consolidateBtn?.addEventListener('click', consolidateMemory);
 clearMemoryBtn?.addEventListener('click', clearMemory);
 
 // Initialize memory display

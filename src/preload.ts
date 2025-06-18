@@ -26,7 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopMemoryCapture: () => ipcRenderer.invoke('stop-memory-capture'),
   getMemoryEntries: () => ipcRenderer.invoke('get-memory-entries'),
   clearMemory: () => ipcRenderer.invoke('clear-memory'),
-  consolidateMemory: () => ipcRenderer.invoke('consolidate-memory'),
   
   // App state
   getDebugMode: () => ipcRenderer.invoke('get-debug-mode'),
