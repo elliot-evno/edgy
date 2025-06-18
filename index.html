@@ -2,54 +2,11 @@
 <html>
 <head>
     <title>Screen AI Assistant</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
 <body>
-    <div class="main-container">
-        <div class="header">
-            <h1>🤖 AI Screen Assistant</h1>
-            <button class="start-btn" id="startBtn">🚀 Start Assistant</button>
-        </div>
-        
-        <!-- Debug panel - hidden by default -->
-        <div class="debug-panel" id="debugPanel" style="display: none;">
-            <div class="screen-panel">
-                <h2>📺 Screen Capture</h2>
-                <div class="screen-preview" id="screenPreview">
-                    <video id="screenVideo" autoplay playsinline style="max-width:100%; max-height:100%;"></video>
-                </div>
-                <button class="capture-btn" id="captureBtn">🎥 Start Screen Recording</button>
-                
-                <div class="memory-controls">
-                    <h3>🧠 Memory System</h3>
-                    <div class="memory-buttons">
-                        <button class="memory-btn" id="startMemoryBtn">🔄 Start Auto-Capture</button>
-                        <button class="memory-btn" id="stopMemoryBtn">⏹️ Stop Auto-Capture</button>
-                        <button class="memory-btn" id="clearMemoryBtn">🗑️ Clear</button>
-                    </div>
-                    <div class="memory-status">
-                        <span id="memoryStatus">Memory: Active</span>
-                        <span id="memoryCount">Memory size: 0 chars</span>
-                    </div>
-                    <div class="memory-entries" id="memoryEntries"></div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="chat-panel">
-            <h2>💬 Chat</h2>
-            <div class="chat-messages" id="chatMessages">
-                <div class="message ai-message">
-                    Hi! I'm monitoring your screen and learning from your activity. Ask me anything about what you're working on!
-                </div>
-            </div>
-            <div class="chat-input-container">
-                <input type="text" class="chat-input" id="chatInput" placeholder="Ask about your screen or work...">
-                <button class="send-btn" id="sendBtn">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="./dist/index.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/main.tsx"></script>
 </body>
 </html>

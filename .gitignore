@@ -1,4 +1,7 @@
+node_modules/
+dist/
+dist-react/
 .env
-node_modules
-dist
+.vite/
+*.log
 eng.traineddata

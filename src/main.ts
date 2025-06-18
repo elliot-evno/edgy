@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import * as Tesseract from 'tesseract.js';
 import { setInterval, clearInterval } from 'timers';
+import * as path from 'path';
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ let memoryInterval: NodeJS.Timeout | null = null;
 
 // Debug mode
 const isDebugMode = process.argv.includes('--debug') || process.env.DEBUG_MODE === 'true';
+const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
 
 // Memory management
 interface MemoryEntry {
@@ -35,12 +37,17 @@ function createWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: require('path').join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.js'),
       webSecurity: false
     }
   });
 
-  mainWindow.loadFile('index.html');
+  // Load the app - in dev mode, load from localhost, in production load from build files
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:3000');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist-react/index.html'));
+  }
   
   // Handle permissions for screen capture
   mainWindow.webContents.session.setPermissionRequestHandler((_, permission, callback) => {
@@ -60,7 +67,7 @@ function createWindow(): void {
     startMemoryCapture();
   });
   
-  if (process.argv.includes('--dev') || isDebugMode) {
+  if (isDev || isDebugMode) {
     mainWindow.webContents.openDevTools();
   }
 }

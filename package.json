@@ -3,14 +3,29 @@
     "version": "1.0.0",
     "main": "dist/main.js",
     "scripts": {
-      "start": "tsc && electron .",
-      "dev": "tsc && electron . --dev"
+      "start": "npm run build && electron .",
+      "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && npm run dev:electron\"",
+      "dev:react": "vite",
+      "dev:electron": "nodemon --watch src/main.ts --exec \"tsc -p tsconfig.electron.json && electron . --dev\"",
+      "build": "npm run build:react && npm run build:electron",
+      "build:react": "vite build",
+      "build:electron": "tsc -p tsconfig.electron.json"
     },
     "devDependencies": {
-      "electron": "^27.3.1"
+      "@types/react": "^18.2.0",
+      "@types/react-dom": "^18.2.0",
+      "@vitejs/plugin-react": "^4.2.0",
+      "concurrently": "^8.2.0",
+      "electron": "^27.3.1",
+      "nodemon": "^3.0.0",
+      "typescript": "^5.3.0",
+      "vite": "^5.0.0",
+      "wait-on": "^7.2.0"
     },
     "dependencies": {
       "@google/generative-ai": "^0.12.0",
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0",
       "tesseract.js": "^5.0.4",
       "dotenv": "^16.3.1"
     }
