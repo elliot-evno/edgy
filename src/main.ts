@@ -40,18 +40,15 @@ function logAudio(message: string, data?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[AUDIO ${timestamp}] ${message}`, data || '');
 }
-
 function createWindow(): void {
-  // Get the primary display's dimensions
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
   
-  // Calculate position for top-right corner
   const windowWidth = 400;
   const windowHeight = 600;
-  const x = width - windowWidth - 20; // 20px padding from the right
-  const y = 40; // 40px from top
+  const x = width - windowWidth - 20;
+  const y = 40;
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
@@ -60,8 +57,10 @@ function createWindow(): void {
     y: y,
     frame: false,
     resizable: true,
-    alwaysOnTop: true,
     skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    show: false,              // Don't show until ready
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -70,7 +69,20 @@ function createWindow(): void {
     }
   });
 
-  // Load the app - in dev mode, load from localhost, in production load from build files
+  // Set window properties when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.setAlwaysOnTop(true, "floating");
+    mainWindow?.setVisibleOnAllWorkspaces(true);
+    mainWindow?.setFullScreenable(false);
+    
+    if (ignoreMouseEvents === true) {
+      mainWindow?.setIgnoreMouseEvents(true);
+    }
+    
+    mainWindow?.show();
+  });
+
+  // Load the app
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
   } else {
@@ -126,6 +138,11 @@ function initializeAI(): void {
 }
 
 app.whenReady().then(() => {
+  // Hide dock icon
+  if (process.platform === 'darwin') {
+    app.dock.hide();
+  }
+  
   createWindow();
   initializeAI();
   
